@@ -1,19 +1,40 @@
-use crate::vectors::{Index, SparseVector, DenseVector};
+use crate::vectors::{Index, SparseVector};
 use crate::constants::*;
-use rand::Rng;
+use rand::{Rng, distributions::Uniform};
 
-type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
+pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
 pub struct Key {
-    pub h0: CyclicBlock,
-    pub h1: CyclicBlock,
+    h0: CyclicBlock,
+    h1: CyclicBlock,
 }
+
 impl Key {
     pub fn from(h0: CyclicBlock, h1: CyclicBlock) -> Self {
         Self {
             h0,
             h1
         }
+    }
+
+    #[inline]
+    pub fn h0(&self) -> &CyclicBlock {
+        &self.h0
+    }
+
+    #[inline]
+    pub fn h1(&self) -> &CyclicBlock {
+        &self.h1
+    }
+
+    #[inline]
+    pub fn h0_supp(&self) -> [Index; BLOCK_WEIGHT] {
+        self.h0.support()
+    }
+
+    #[inline]
+    pub fn h1_supp(&self) -> [Index; BLOCK_WEIGHT] {
+        self.h1.support()
     }
 
     pub fn block_weight(&self) -> usize {
@@ -24,46 +45,27 @@ impl Key {
         self.h0.length()
     }
 
-    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R, dist: &Uniform<Index>) -> Self {
         Self {
-            h0: CyclicBlock::random(rng),
-            h1: CyclicBlock::random(rng)
+            h0: CyclicBlock::random(rng, dist),
+            h1: CyclicBlock::random(rng, dist)
         }
     }
 
     pub fn is_weak(&self) -> bool {
-        self.h0.shifts_above_threshold(WEAK_KEY_THRESHOLD) // type I or II weak key
-        || self.h1.shifts_above_threshold(WEAK_KEY_THRESHOLD) // type I or II weak key
-        || self.h0.max_shifted_product_weight_geq(&self.h1, WEAK_KEY_THRESHOLD) // type III weak key
+        // type I or II weak key
+        self.h0.shifts_above_threshold(WEAK_KEY_THRESHOLD)
+        || self.h1.shifts_above_threshold(WEAK_KEY_THRESHOLD)
+        // type III weak key
+        || self.h0.max_shifted_product_weight_geq(&self.h1, WEAK_KEY_THRESHOLD)
     }
 
-    pub fn random_non_weak<R: Rng + ?Sized>(rng: &mut R) -> Self {
+    pub fn random_non_weak<R: Rng + ?Sized>(rng: &mut R, dist: &Uniform<Index>) -> Self {
         loop {
-            let key = Self::random(rng);
+            let key = Self::random(rng, dist);
             if !key.is_weak() {
                 return key;
             }
         }
     }
-}
-
-pub type ErrorVector = SparseVector<ERROR_WEIGHT, ROW_LENGTH>;
-pub type Syndrome = DenseVector<BLOCK_LENGTH>;
-pub type DecoderOutput = DenseVector<ROW_LENGTH>;
-
-pub fn syndrome(key: &Key, err: &ErrorVector) -> Syndrome {
-    let mut s = Syndrome::new();
-    for i in err.support() {
-        let i = i as usize;
-        if i < BLOCK_LENGTH {
-            for j in key.h0.support() {
-                s.flip((i + j as usize) % BLOCK_LENGTH);
-            }
-        } else {
-            for j in key.h1.support() {
-                s.flip((i + j as usize) % BLOCK_LENGTH);
-            }
-        }
-    }
-    s
 }

@@ -1,12 +1,16 @@
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
+use rustc_hash::FxHashMap;
 use std::cmp;
 
 fn big_binomial(n: u32, k: u32) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
 }
 
-pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> (u32, bool) {
+pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u32> {
+    if ws == 0 {
+        return Some(1);
+    }
     let n = 2*r;
     let w = 2*d;
     let n_minus_w = n - w;
@@ -23,21 +27,37 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> (u32, bool) {
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
-    (threshold as u32, threshold.is_nan())
+    if threshold.is_nan() { None } else { Some(threshold as u32) }
 }
 
-pub fn threshold_cache(r: usize, d: usize, t: usize) -> Vec<u32> {
-    let (r, d, t) = (r as u32, d as u32, t as u32);
-    let mut cache = vec![0];
-    let mut ws = 1;
-    loop {
-        let (thresh, is_nan) = exact_threshold(ws, r, d, t);
-        if is_nan {
-            break;
-        } else {
-            cache.push(thresh);
-            ws += 1;
+pub struct ThresholdCache {
+    cache: FxHashMap<u32, Option<u32>>,
+    pub r: u32,
+    pub d: u32,
+    pub t: u32
+}
+
+impl ThresholdCache {
+    pub fn with_parameters(r: u32, d: u32, t: u32) -> Self {
+        Self {
+            cache: FxHashMap::default(),
+            r, d, t
         }
     }
-    cache
+
+    pub fn get(&mut self, ws: u32) -> Option<u32> {
+        *self.cache.entry(ws).or_insert_with(|| exact_threshold(ws, self.r, self.d, self.t))
+    }
+
+    pub fn is_computed(&self, ws: &u32) -> bool {
+        self.cache.contains_key(ws)
+    }
+
+    pub fn precompute_all(&mut self) {
+        for ws in 0..self.r {
+            if self.get(ws).is_none() {
+                break;
+            }
+        }
+    }
 }
