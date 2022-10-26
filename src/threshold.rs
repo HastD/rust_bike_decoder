@@ -1,3 +1,4 @@
+use crate::parameters::BF_THRESHOLD_MIN;
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
 use rustc_hash::FxHashMap;
@@ -27,7 +28,13 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u32> {
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
-    if threshold.is_nan() { None } else { Some(threshold as u32) }
+    if threshold.is_nan() { None } else {
+        let threshold = if THRESHOLD_TAKE_MAX {
+            // modification to threshold according to Vasseur's thesis, section 6.1.3.1
+            cmp::max(threshold as u32, BF_THRESHOLD_MIN)
+        } else { threshold as u32 };
+        Some(threshold)
+    }
 }
 
 pub struct ThresholdCache {
@@ -55,9 +62,7 @@ impl ThresholdCache {
 
     pub fn precompute_all(&mut self) {
         for ws in 0..self.r {
-            if self.get(ws).is_none() {
-                break;
-            }
+            self.get(ws);
         }
     }
 }
