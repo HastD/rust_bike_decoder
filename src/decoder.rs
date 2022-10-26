@@ -4,6 +4,7 @@ use crate::vectors::ErrorVector;
 use crate::syndrome::Syndrome;
 use crate::threshold::ThresholdCache;
 
+#[inline(never)]
 pub fn bgf_decoder(
     key: &Key,
     s: &mut Syndrome,
@@ -55,6 +56,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &Syndrome) -> [u32; ROW_LENGTH] {
     upc
 }
 
+#[inline(never)]
 pub fn bf_iter(
     key: &Key,
     s: &mut Syndrome,
@@ -76,6 +78,7 @@ pub fn bf_iter(
     }
 }
 
+#[inline(never)]
 pub fn bf_masked_iter(
     key: &Key,
     s: &mut Syndrome,
