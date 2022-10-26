@@ -29,6 +29,32 @@ pub fn bgf_decoder(
     (e_out, ws == 0)
 }
 
+#[inline(never)]
+pub fn unsatisfied_parity_checks(key: &Key, s: &Syndrome) -> [u32; ROW_LENGTH] {
+    let mut upc = [0; ROW_LENGTH];
+    for i in 0..BLOCK_LENGTH {
+        let upc_i = &mut upc[i];
+        for j in key.h0().support() {
+            let mut idx = i.wrapping_add(j as usize);
+            if idx >= BLOCK_LENGTH {
+                idx = idx.wrapping_sub(BLOCK_LENGTH);
+            }
+            *upc_i += s.get(idx) as u32;
+        }
+    }
+    for i in 0..BLOCK_LENGTH {
+        let upc_r_plus_i = &mut upc[BLOCK_LENGTH + i];
+        for j in key.h1().support() {
+            let mut idx = i.wrapping_add(j as usize);
+            if idx >= BLOCK_LENGTH {
+                idx = idx.wrapping_sub(BLOCK_LENGTH);
+            }
+            *upc_r_plus_i += s.get(idx) as u32;
+        }
+    }
+    upc
+}
+
 pub fn bf_iter(
     key: &Key,
     s: &mut Syndrome,
@@ -37,38 +63,15 @@ pub fn bf_iter(
     gray: &mut [bool; ROW_LENGTH],
     thr: u32
 ) {
+    let upc = unsatisfied_parity_checks(key, &*s);
     let gray_thr = thr - BGF_THRESHOLD;
-    let mut flipped_positions = [0u8; ROW_LENGTH];
-    for i in 0..BLOCK_LENGTH {
-        let mut upc = 0;
-        for j in key.h0().support() {
-            upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
-        }
-        if upc >= thr {
+    for i in 0..ROW_LENGTH {
+        if upc[i] >= thr {
             e_out.flip(i);
+            s.recompute_flipped_bit(key, i);
             black[i] = true;
-            flipped_positions[i] = 1;
-        } else if upc >= gray_thr {
+        } else if upc[i] >= gray_thr {
             gray[i] = true;
-        }
-    }
-    for i in 0..BLOCK_LENGTH {
-        let mut upc = 0;
-        for j in key.h1().support() {
-            upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
-        }
-        if upc >= thr {
-            e_out.flip(BLOCK_LENGTH + i);
-            black[BLOCK_LENGTH + i] = true;
-            flipped_positions[BLOCK_LENGTH + i] = 1;
-        } else if upc >= gray_thr {
-            gray[BLOCK_LENGTH + i] = true;
-        }
-    }
-    // Recompute syndrome according to flipped bits
-    for pos in 0..2*BLOCK_LENGTH {
-        if flipped_positions[pos] == 1 {
-            s.recompute_flipped_bit(key, pos);
         }
     }
 }

@@ -108,6 +108,6 @@ impl Key {
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{h0: [{}], h1: [{}]}}", self.h0().to_string(), self.h1().to_string())
+        write!(f, "{{h0: [{}], h1: [{}]}}", self.h0(), self.h1())
     }
 }

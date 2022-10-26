@@ -185,13 +185,13 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let mut shifts = [[0 as Index; WEIGHT]; WEIGHT];
         for i in 0..WEIGHT {
             let self_i = self.get(i);
-            let length_plus_self_i = length + self_i;
+            let length_plus_self_i = length.wrapping_add(self_i);
             for j in 0..WEIGHT {
                 let other_j = other.get(j);
                 shifts[i][j] = if self_i < other_j {
-                    length_plus_self_i - other_j
+                    length_plus_self_i.wrapping_sub(other_j)
                 } else {
-                    self_i - other_j
+                    self_i.wrapping_sub(other_j)
                 };  // this equals (self_i - other_j) % length
                     // since 0 <= self_i, other_j < N.
             }
@@ -220,7 +220,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         for i in 0..WEIGHT {
             for j in i+1..WEIGHT {
                 let diff = self.get(j).abs_diff(self.get(i));
-                let count = &mut shift_counts[cmp::min(diff, length - diff) as usize];
+                let delta = cmp::min(diff, length.wrapping_sub(diff));
+                let count = &mut shift_counts[delta as usize];
                 *count += 1;
                 if *count >= threshold {
                     return true;

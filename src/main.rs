@@ -24,6 +24,8 @@ use serde_json::json;
 struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
     number: u32,
+    #[arg(short,long,help="Suppress weak key filtering")]
+    nofilter: bool,
     #[arg(short,long,help="Output file (default stdout)")]
     output: Option<String>,
     #[arg(short,long,help="Max number of decoding failures recorded (default all)")]
@@ -35,12 +37,18 @@ struct Args {
 }
 
 fn decoding_trial<R: Rng + ?Sized>(
+    filtered: bool,
     rng: &mut R,
     key_dist: &Uniform<Index>,
     err_dist: &Uniform<Index>,
     threshold_cache: &mut ThresholdCache
 ) -> (Key, SparseErrorVector, bool) {
-    let key = Key::random_non_weak(rng, key_dist);
+    let key: Key;
+    if filtered {
+        key = Key::random_non_weak(rng, key_dist);
+    } else {
+        key = Key::random(rng, key_dist);
+    }
     let e_supp = SparseErrorVector::random(rng, err_dist);
     let mut syn = Syndrome::from_sparse(&key, &e_supp);
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
@@ -101,7 +109,10 @@ fn main() {
     }
     let start_time = Instant::now();
     for i in 0..number_of_trials {
-        let (key, e_supp, success) = decoding_trial(&mut rng, &key_dist, &err_dist, &mut threshold_cache);
+        let (key, e_supp, success) = decoding_trial(
+            !args.nofilter,
+            &mut rng, &key_dist, &err_dist, &mut threshold_cache
+        );
         if !success {
             failure_count += 1;
             if failure_count <= record_max {
