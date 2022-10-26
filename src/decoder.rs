@@ -82,76 +82,33 @@ pub fn bf_masked_iter(
 ) {
     let mut flipped_positions = [0u8; ROW_LENGTH];
     for i in 0..BLOCK_LENGTH {
-        let mut upc = 0;
-        for j in key.h0().support() {
-            upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
-        }
-        if upc >= thr && mask[i] {
-            e_out.flip(i);
-            flipped_positions[i] = 1;
+        if mask[i] {
+            let mut upc = 0;
+            for j in key.h0().support() {
+                upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
+            }
+            if upc >= thr {
+                e_out.flip(i);
+                flipped_positions[i] = 1;
+            }
         }
     }
-    for i in 0..BLOCK_LENGTH {
-        let mut upc = 0;
-        for j in key.h1().support() {
-            upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
-        }
-        if upc >= thr && mask[BLOCK_LENGTH + i] {
-            e_out.flip(BLOCK_LENGTH + i);
-            flipped_positions[BLOCK_LENGTH + i] = 1;
+    for i in BLOCK_LENGTH..ROW_LENGTH {
+        if mask[i] {
+            let mut upc = 0;
+            for j in key.h1().support() {
+                upc += s.get((i + j as usize) % BLOCK_LENGTH) as u32;
+            }
+            if upc >= thr {
+                e_out.flip(i);
+                flipped_positions[i] = 1;
+            }
         }
     }
     // Recompute syndrome according to flipped bits
-    for pos in 0..2*BLOCK_LENGTH {
+    for pos in 0..ROW_LENGTH {
         if flipped_positions[pos] == 1 {
             s.recompute_flipped_bit(key, pos);
         }
     }
 }
-
-/*
-def BFmaskedIter(r, s, H0tr, H1tr, e, tau, T, set0, set1):
-    """
-    This function performs one step of masked bitflip decoding.
-
-    Inputs:
-    - r = Circulant block size (integer)
-    - s = Syndrome to decode (vector over GF(2))
-    - H0tr = Support of first column of first circulant block (list of integers)
-    - H1tr = Support of first column of second circulant block (list of integers)
-    - e = Error vector (vector over GF(2))
-    - tau = Amount by which the threshold is lowered for the grey masked flip (integer)
-    - T = Threshold (integer)
-    - set0 = Masked locations for first circulant block (list of integers)
-    - set1 = Masked locations for second circulant block (list of integers)
-
-    Output: A list containing:
-    - e = Updated error vector (vector over GF(2))
-    - s = Updated syndrome (vector over GF(2))
-    """
-    copy_s = s.change_ring(ZZ)
-    #Flips for H0 (first circulant block)
-    for i in set0:
-        upc = 0
-        for j in H0tr:
-            new_pos = (i+j) % r
-            upc += copy_s[new_pos]
-        if upc >= T:
-            e[i] += 1
-            for j in H0tr:
-                new_pos = (i+j) % r
-                s[new_pos] += 1
-
-    #Flips for H1 (second circulant block)
-    for i in set1:
-        upc = 0
-        for j in H1tr:
-            new_pos = (i+j) % r
-            upc += copy_s[new_pos]
-        if upc >= T:
-            e[r+i] += 1
-            for j in H1tr:
-                new_pos = (i+j) % r
-                s[new_pos] += 1
-    return e, s
-*/

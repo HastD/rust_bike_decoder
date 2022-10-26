@@ -82,17 +82,15 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     {
         let mut supp = [0 as Index; WEIGHT];
         let mut ctr = 0;
-        while ctr < WEIGHT {
+        'outer: while ctr < WEIGHT {
             // Randomly generate element in the appropriate range
             supp[ctr] = dist.sample(rng);
-            let mut is_new = 1;
             for i in 0..ctr {
                 if supp[i] == supp[ctr] {
-                    is_new = 0;
-                    break;
+                    continue 'outer;
                 }
             }
-            ctr += is_new;
+            ctr += 1;
         }
         Self(supp)
     }
@@ -306,13 +304,8 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         supp
     }
 
+    #[inline]
     pub fn hamming_weight(&self) -> u32 {
-        let mut count = 0;
-        for i in self.0 {
-            if i == 1 {
-                count += 1;
-            }
-        }
-        count
+        self.0.iter().filter(|&i| *i == 1).count() as u32
     }
 }

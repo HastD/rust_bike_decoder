@@ -1,7 +1,7 @@
 use crate::parameters::*;
 use crate::vectors::Index;
 use rand::distributions::Uniform;
-use rand_xoshiro::rand_core::SeedableRng;
+use rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 pub fn get_rng() -> Xoshiro256PlusPlus {
