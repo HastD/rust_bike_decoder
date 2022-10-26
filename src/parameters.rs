@@ -8,4 +8,4 @@ pub const BGF_THRESHOLD: u32 = 3;
 pub const WEAK_KEY_THRESHOLD: u8 = 3;
 pub const NB_ITER: usize = 7;
 // threshold function takes max(threshold, BF_THRESHOLD_MIN)
-pub const BF_THRESHOLD_MIN: u32 = (BLOCK_LENGTH + 1)/2;
+pub const BF_THRESHOLD_MIN: usize = (BLOCK_LENGTH + 1)/2;

@@ -29,10 +29,8 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u32> {
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
     if threshold.is_nan() { None } else {
-        let threshold = if THRESHOLD_TAKE_MAX {
-            // modification to threshold according to Vasseur's thesis, section 6.1.3.1
-            cmp::max(threshold as u32, BF_THRESHOLD_MIN)
-        } else { threshold as u32 };
+        // modification to threshold according to Vasseur's thesis, section 6.1.3.1
+        let threshold = cmp::max(threshold as u32, BF_THRESHOLD_MIN as u32);
         Some(threshold)
     }
 }
