@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::parameters::*;
 use crate::keys::Key;
 use crate::vectors::ErrorVector;
 use crate::syndrome::Syndrome;

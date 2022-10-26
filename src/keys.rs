@@ -1,9 +1,12 @@
 use crate::vectors::{Index, SparseVector};
-use crate::constants::*;
+use crate::parameters::*;
 use rand::{Rng, distributions::Uniform};
+use serde::{Serialize, Deserialize};
+use std::fmt;
 
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Key {
     h0: CyclicBlock,
     h1: CyclicBlock,
@@ -60,12 +63,51 @@ impl Key {
         || self.h0.max_shifted_product_weight_geq(&self.h1, WEAK_KEY_THRESHOLD)
     }
 
-    pub fn random_non_weak<R: Rng + ?Sized>(rng: &mut R, dist: &Uniform<Index>) -> Self {
+    pub fn random_non_weak<R>(rng: &mut R, dist: &Uniform<Index>) -> Self
+        where R: Rng + ?Sized
+    {
         loop {
             let key = Self::random(rng, dist);
             if !key.is_weak() {
                 return key;
             }
         }
+    }
+
+    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
+        where R: Rng + ?Sized
+    {
+        let random_block = CyclicBlock::random(rng, dist);
+        let weak_block = CyclicBlock::random_weak_type1(thresh, rng);
+        if rng.gen::<bool>() {
+            Self { h0: weak_block, h1: random_block }
+        } else {
+            Self { h0: random_block, h1: weak_block }
+        }
+    }
+
+    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
+        where R: Rng + ?Sized
+    {
+        let random_block = CyclicBlock::random(rng, dist);
+        let weak_block = CyclicBlock::random_weak_type2(thresh, rng);
+        if rng.gen::<bool>() {
+            Self { h0: weak_block, h1: random_block }
+        } else {
+            Self { h0: random_block, h1: weak_block }
+        }
+    }
+
+    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R, _dist: &Uniform<Index>) -> Self
+        where R: Rng + ?Sized
+    {
+        let (h0, h1) = CyclicBlock::random_weak_type3(thresh, rng);
+        Self { h0, h1 }
+    }
+}
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{h0: [{}], h1: [{}]}}", self.h0().to_string(), self.h1().to_string())
     }
 }

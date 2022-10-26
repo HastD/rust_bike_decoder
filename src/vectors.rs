@@ -1,5 +1,6 @@
-use crate::constants::*;
+use crate::parameters::*;
 use rand::{Rng, distributions::{Distribution, Uniform}};
+use serde::{Serialize, Deserialize};
 use std::cmp;
 use std::fmt;
 
@@ -8,9 +9,47 @@ pub type Index = u32;
 pub type SparseErrorVector = SparseVector<ERROR_WEIGHT, ROW_LENGTH>;
 pub type ErrorVector = DenseVector<ROW_LENGTH>;
 
+fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) {
+    // Find index to insert the element in order
+    let mut idx = 0;
+    while idx < max_i && array[idx] <= value {
+        idx += 1;
+    }
+    // Move larger elements to make space
+    let mut j = max_i;
+    while j > idx {
+        array[j] = array[j - 1];
+        j -= 1;
+    }
+    // Insert the element
+    array[idx] = value;
+}
+
+fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
+    // Find index to insert the element in order
+    let mut idx = 0;
+    while idx < max_i && array[idx] <= value {
+        idx += 1;
+        // Element gets incremented so it's uniformly distributed
+        // over numbers not already in list
+        value += 1;
+    }
+    // Move larger elements to make space
+    let mut j = max_i;
+    while j > idx {
+        array[j] = array[j - 1];
+        j -= 1;
+    }
+    // Insert the element
+    array[idx] = value;
+}
+
 // Sparse vector of fixed weight and length over GF(2)
-#[derive(Clone)]
-pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>([Index; WEIGHT]);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
+    #[serde(with = "serde_arrays")]
+    [Index; WEIGHT]
+);
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     #[inline]
@@ -38,7 +77,9 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         self.0.contains(index)
     }
 
-    pub fn random<R: Rng + ?Sized>(rng: &mut R, dist: &Uniform<Index>) -> Self {
+    pub fn random<R>(rng: &mut R, dist: &Uniform<Index>) -> Self
+        where R: Rng + ?Sized
+    {
         let mut supp = [0 as Index; WEIGHT];
         let mut ctr = 0;
         while ctr < WEIGHT {
@@ -54,6 +95,83 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
             ctr += is_new;
         }
         Self(supp)
+    }
+
+    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
+        where R: Rng + ?Sized
+    {
+        let r = LENGTH as Index;
+        let delta = rng.gen_range(1..=r/2);
+        let shift = rng.gen_range(0..r);
+        let mut supp = [0 as Index; WEIGHT];
+        for j in 0..=thresh {
+            insert_sorted_noinc(&mut supp, (delta * (shift + j as Index)) % r, j);
+        }
+        for j in thresh+1 .. WEIGHT {
+            let rand = rng.gen_range(0..r-j as Index);
+            insert_sorted_inc(&mut supp, rand, j);
+        }
+        Self(supp)
+    }
+
+    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
+        where R: Rng + ?Sized
+    {
+        let s = WEIGHT - thresh - 1;
+        let (r, d) = (LENGTH as Index, WEIGHT as Index);
+        let mut o = [0 as Index; WEIGHT];
+        let mut z = [0 as Index; WEIGHT];
+        for j in 1..s {
+            // Randomly generate elements in the appropriate ranges
+            let rand_o = rng.gen_range(0..d-j as Index);
+            let rand_z = rng.gen_range(0..r-d-j as Index);
+            // Insert in sorted order
+            insert_sorted_inc(&mut o, rand_o, j);
+            insert_sorted_inc(&mut z, rand_z, j);
+        }
+        o[s] = d;
+        z[s] = r - d;
+        for j in 0..s {
+            o[j] = o[j+1] - o[j];
+            z[j] = z[j+1] - z[j];
+        }
+        let delta = rng.gen_range(1..=r/2);
+        let shift = rng.gen_range(0..z[0]+o[0]);
+        let mut supp = [0 as Index; WEIGHT];
+        let mut idx = 0;
+        let mut pos = r - shift;
+        for j in 0..s {
+            pos = (pos + z[j]) % r;
+            for k in 0..o[j] {
+                insert_sorted_noinc(&mut supp, (delta * (pos + k)) % r, idx);
+                idx += 1;
+            }
+            pos += o[j];
+        }
+        Self(supp)
+    }
+
+    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> (Self, Self)
+        where R: Rng + ?Sized
+    {
+        let r = LENGTH as Index;
+        let shift = rng.gen_range(0..r);
+        let mut h0 = [0 as Index; WEIGHT];
+        let mut h1 = [0 as Index; WEIGHT];
+        // Generate entries that overlap after a shift
+        for j in 0..thresh {
+            let rand = rng.gen_range(0..r-j as Index);
+            insert_sorted_inc(&mut h0, rand, j);
+            insert_sorted_noinc(&mut h1, (rand + shift) % r, j);
+        }
+        // Generate other entries
+        for j in thresh..WEIGHT {
+            let rand = rng.gen_range(0..r-j as Index);
+            insert_sorted_inc(&mut h0, rand, j);
+            let rand = rng.gen_range(0..r-j as Index);
+            insert_sorted_inc(&mut h1, rand, j);
+        }
+        (Self(h0), Self(h1))
     }
 
     pub fn dense(&self) -> DenseVector<LENGTH> {

@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::parameters::*;
 use crate::vectors::{DenseVector, SparseErrorVector, ErrorVector};
 use crate::keys::Key;
 

@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::parameters::*;
 use crate::vectors::Index;
 use rand::distributions::Uniform;
 use rand_xoshiro::rand_core::SeedableRng;
