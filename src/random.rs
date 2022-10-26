@@ -5,7 +5,7 @@ use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 pub fn get_rng() -> Xoshiro256PlusPlus {
-    Xoshiro256PlusPlus::seed_from_u64(0)
+    Xoshiro256PlusPlus::from_entropy()
 }
 
 pub fn get_key_dist() -> Uniform<Index> {

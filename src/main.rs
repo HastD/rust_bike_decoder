@@ -14,6 +14,7 @@ use crate::vectors::{Index, SparseErrorVector};
 use crate::syndrome::Syndrome;
 use clap::Parser;
 use rand::{Rng, distributions::Uniform};
+use std::cmp;
 use std::{fmt::Display, fs::File, io::Write};
 use std::time::{Duration, Instant};
 use serde_json::json;
@@ -82,7 +83,7 @@ fn main() {
     let args = Args::parse();
     let number_of_trials = args.number;
     let record_max = args.recordmax.unwrap_or(number_of_trials);
-    let write_frequency = args.writefreq.unwrap_or(number_of_trials);
+    let write_frequency = cmp::max(10000, args.writefreq.unwrap_or(number_of_trials));
 
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let key_dist = crate::random::get_key_dist();
@@ -91,21 +92,40 @@ fn main() {
     let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
     let mut failure_count = 0;
     let mut decoding_failures: Vec<(Key, SparseErrorVector)> = Vec::new();
+    if args.verbose {
+        println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
+        println!(
+            "    r = {}, d = {}, t = {}, iterations = {}, tau = {}, T = {}",
+            r, d, t, NB_ITER, BGF_THRESHOLD, WEAK_KEY_THRESHOLD
+        );
+    }
     let start_time = Instant::now();
     for i in 0..number_of_trials {
         let (key, e_supp, success) = decoding_trial(&mut rng, &key_dist, &err_dist, &mut threshold_cache);
         if !success {
             failure_count += 1;
             if failure_count <= record_max {
+                if args.verbose {
+                    println!("Decoding failure found!");
+                    println!("Key: {}\nError vector: {}", key, e_supp);
+                    if failure_count == record_max {
+                        println!("Maximum number of decoding failures recorded.");
+                    }
+                }
                 decoding_failures.push((key, e_supp));
             }
         }
         if i != 0 && i % write_frequency == 0 {
-            let json_output = build_json(failure_count, i, &decoding_failures, start_time.elapsed());
+            let runtime = start_time.elapsed();
+            let json_output = build_json(failure_count, i, &decoding_failures, runtime);
             write_to_file_or_stdout(&args.output, &json_output);
+            if args.verbose {
+                println!(
+                    "Found {} decoding failures in {} trials (runtime: {:.3} s)",
+                    failure_count, i, runtime.as_secs_f64()
+                );
+            }
         }
-        //let _graph = graphs::tanner_graph(&key);
-        //println!("Nodes: {}; edges: {}", graph.node_count(), graph.edge_count());
     }
     let runtime = start_time.elapsed();
     let json_output = build_json(failure_count, number_of_trials, &decoding_failures, runtime);
