@@ -38,6 +38,7 @@ dependencies = [
  "rand_core",
  "rand_xoshiro",
  "rustc-hash",
+ "safe_arch",
  "serde",
  "serde_arrays",
  "serde_json",
@@ -624,6 +625,12 @@ name = "ryu"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
+
+[[package]]
+name = "safe_arch"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "794821e4ccb0d9f979512f9c1973480123f9bd62a90d74ab0f9426fcf8f4a529"
 
 [[package]]
 name = "same-file"

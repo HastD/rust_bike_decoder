@@ -31,12 +31,12 @@ impl Key {
     }
 
     #[inline]
-    pub fn h0_supp(&self) -> [Index; BLOCK_WEIGHT] {
+    pub fn h0_supp(&self) -> &[Index; BLOCK_WEIGHT] {
         self.h0.support()
     }
 
     #[inline]
-    pub fn h1_supp(&self) -> [Index; BLOCK_WEIGHT] {
+    pub fn h1_supp(&self) -> &[Index; BLOCK_WEIGHT] {
         self.h1.support()
     }
 

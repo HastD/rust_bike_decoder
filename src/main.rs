@@ -43,12 +43,11 @@ fn decoding_trial<R: Rng + ?Sized>(
     err_dist: &Uniform<Index>,
     threshold_cache: &mut ThresholdCache
 ) -> (Key, SparseErrorVector, bool) {
-    let key: Key;
-    if filtered {
-        key = Key::random_non_weak(rng, key_dist);
+    let key = if filtered {
+        Key::random_non_weak(rng, key_dist)
     } else {
-        key = Key::random(rng, key_dist);
-    }
+        Key::random(rng, key_dist)
+    };
     let e_supp = SparseErrorVector::random(rng, err_dist);
     let mut syn = Syndrome::from_sparse(&key, &e_supp);
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);

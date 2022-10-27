@@ -68,8 +68,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     }
 
     #[inline]
-    pub fn support(&self) -> [Index; WEIGHT] {
-        self.0
+    pub fn support(&self) -> &[Index; WEIGHT] {
+        &self.0
     }
 
     #[inline]
@@ -174,7 +174,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 
     pub fn dense(&self) -> DenseVector<LENGTH> {
         let mut v = DenseVector::zero();
-        for i in self.support() {
+        for &i in self.support() {
             v.flip(i as usize);
         }
         v
@@ -235,8 +235,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 impl<const W: usize, const L: usize> cmp::PartialEq for SparseVector<W, L> {
     // Supports may or may not be sorted, so we have to sort to test equality
     fn eq(&self, other: &Self) -> bool {
-        let mut supp_self = self.support();
-        let mut supp_other = other.support();
+        let mut supp_self = self.support().clone();
+        let mut supp_other = other.support().clone();
         supp_self.sort();
         supp_other.sort();
         supp_self == supp_other
@@ -247,7 +247,7 @@ impl<const W: usize, const L: usize> cmp::Eq for SparseVector<W, L> { }
 
 impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut supp = self.support();
+        let mut supp = self.support().clone();
         supp.sort();
         let mut str_supp = Vec::new();
         for index in supp {
@@ -273,6 +273,11 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     #[inline]
     pub fn get(&self, i: usize) -> u8 {
         self.0[i]
+    }
+
+    #[inline]
+    pub fn contents(&self) -> &[u8; LENGTH] {
+        &self.0
     }
 
     #[inline]
@@ -305,8 +310,8 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         supp
     }
 
-    #[inline]
-    pub fn hamming_weight(&self) -> u32 {
-        self.0.iter().filter(|&i| *i == 1).count() as u32
+    pub fn duplicate_up_to(&mut self, length: usize) {
+        let (left, right) = self.0.split_at_mut(length);
+        right[..length].copy_from_slice(left);
     }
 }
