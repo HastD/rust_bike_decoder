@@ -55,20 +55,20 @@ impl Key {
         }
     }
 
-    pub fn is_weak(&self) -> bool {
+    pub fn is_weak(&self, threshold: usize) -> bool {
         // type I or II weak key
-        self.h0.shifts_above_threshold(WEAK_KEY_THRESHOLD)
-        || self.h1.shifts_above_threshold(WEAK_KEY_THRESHOLD)
+        self.h0.shifts_above_threshold(threshold)
+        || self.h1.shifts_above_threshold(threshold)
         // type III weak key
-        || self.h0.max_shifted_product_weight_geq(&self.h1, WEAK_KEY_THRESHOLD)
+        || self.h0.max_shifted_product_weight_geq(&self.h1, threshold)
     }
 
-    pub fn random_non_weak<R>(rng: &mut R, dist: &Uniform<Index>) -> Self
+    pub fn random_non_weak<R>(threshold: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
         where R: Rng + ?Sized
     {
         loop {
             let key = Self::random(rng, dist);
-            if !key.is_weak() {
+            if !key.is_weak(threshold) {
                 return key;
             }
         }

@@ -24,29 +24,36 @@ use serde_json::json;
 struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
     number: u32,
-    #[arg(short,long,help="Suppress weak key filtering")]
-    nofilter: bool,
-    #[arg(short,long,help="Output file (default stdout)")]
+    #[arg(short,long,default_value_t=0,
+        help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
+    filter: i8,
+    #[arg(short='W',long,default_value_t=3,help="Weak key threshold")]
+    weak_key_threshold: usize,
+    #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
-    #[arg(short,long,help="Max number of decoding failures recorded (default all)")]
+    #[arg(short,long,help="Max number of decoding failures recorded [default all]")]
     recordmax: Option<u32>,
-    #[arg(short='f',long,help="Write frequency (default only at end)")]
-    writefreq: Option<u32>,
+    #[arg(short,long,help="Save to disk frequency [default only at end]")]
+    savefreq: Option<u32>,
     #[arg(short,long)]
     verbose: bool,
 }
 
 fn decoding_trial<R: Rng + ?Sized>(
-    filtered: bool,
+    weak_key_filter: i8,
+    weak_key_threshold: usize,
     rng: &mut R,
     key_dist: &Uniform<Index>,
     err_dist: &Uniform<Index>,
     threshold_cache: &mut ThresholdCache
 ) -> (Key, SparseErrorVector, bool) {
-    let key = if filtered {
-        Key::random_non_weak(rng, key_dist)
-    } else {
-        Key::random(rng, key_dist)
+    let key = match weak_key_filter {
+        0 => Key::random(rng, key_dist),
+        -1 => Key::random_non_weak(weak_key_threshold, rng, key_dist),
+        1 => Key::random_weak_type1(weak_key_threshold, rng, key_dist),
+        2 => Key::random_weak_type2(weak_key_threshold, rng, key_dist),
+        3 => Key::random_weak_type3(weak_key_threshold, rng, key_dist),
+        _ => panic!("Invalid value for weak key filter (must be -1, 0 (default), 1, 2, or 3)")
     };
     let e_supp = SparseErrorVector::random(rng, err_dist);
     let mut syn = Syndrome::from_sparse(&key, &e_supp);
@@ -58,6 +65,8 @@ fn build_json(
     failure_count: u32,
     number_of_trials: u32,
     decoding_failures: &Vec<(Key, SparseErrorVector)>,
+    weak_key_filter: i8,
+    weak_key_threshold: usize,
     runtime: Duration
 ) -> serde_json::Value {
     json!({
@@ -66,7 +75,8 @@ fn build_json(
         "t": ERROR_WEIGHT,
         "iterations": NB_ITER,
         "bgf_threshold": BGF_THRESHOLD,
-        "weak_key_threshold": WEAK_KEY_THRESHOLD,
+        "weak_key_filter": weak_key_filter,
+        "weak_key_threshold": weak_key_threshold,
         "trials": number_of_trials,
         "failure_count": failure_count,
         "decoding_failures": decoding_failures,
@@ -89,8 +99,10 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
 fn main() {
     let args = Args::parse();
     let number_of_trials = args.number;
+    let weak_key_threshold = args.weak_key_threshold;
+    let weak_key_filter = args.filter;
     let record_max = args.recordmax.unwrap_or(number_of_trials);
-    let write_frequency = cmp::max(10000, args.writefreq.unwrap_or(number_of_trials));
+    let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(number_of_trials));
 
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let key_dist = crate::random::get_key_dist();
@@ -103,13 +115,13 @@ fn main() {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
         println!(
             "    r = {}, d = {}, t = {}, iterations = {}, tau = {}, T = {}",
-            r, d, t, NB_ITER, BGF_THRESHOLD, WEAK_KEY_THRESHOLD
+            r, d, t, NB_ITER, BGF_THRESHOLD, weak_key_threshold
         );
     }
     let start_time = Instant::now();
     for i in 0..number_of_trials {
         let (key, e_supp, success) = decoding_trial(
-            !args.nofilter,
+            weak_key_filter, weak_key_threshold,
             &mut rng, &key_dist, &err_dist, &mut threshold_cache
         );
         if !success {
@@ -125,9 +137,11 @@ fn main() {
                 decoding_failures.push((key, e_supp));
             }
         }
-        if i != 0 && i % write_frequency == 0 {
+        if i != 0 && i % save_frequency == 0 {
             let runtime = start_time.elapsed();
-            let json_output = build_json(failure_count, i, &decoding_failures, runtime);
+            let json_output = build_json(
+                failure_count, i, &decoding_failures, weak_key_filter, weak_key_threshold, runtime
+            );
             write_to_file_or_stdout(&args.output, &json_output);
             if args.verbose {
                 println!(
@@ -138,7 +152,10 @@ fn main() {
         }
     }
     let runtime = start_time.elapsed();
-    let json_output = build_json(failure_count, number_of_trials, &decoding_failures, runtime);
+    let json_output = build_json(
+        failure_count, number_of_trials, &decoding_failures,
+        weak_key_filter, weak_key_threshold, runtime
+    );
     write_to_file_or_stdout(&args.output, &json_output);
     if args.verbose {
         println!("Trials: {}", number_of_trials);

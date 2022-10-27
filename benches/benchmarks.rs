@@ -18,7 +18,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("Key::random_non_weak", |b| {
         let mut rng = random::get_rng();
         let key_dist = random::get_key_dist();
-        b.iter(|| black_box(Key::random_non_weak(&mut rng, &key_dist)))
+        b.iter(|| black_box(Key::random_non_weak(3, &mut rng, &key_dist)))
     });
     c.bench_function("syndrome", |b| {
         let mut rng = random::get_rng();
@@ -43,7 +43,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         threshold_cache.precompute_all();
         b.iter_batched_ref(
             || {
-                let key = Key::random_non_weak(&mut rng, &key_dist);
+                let key = Key::random(&mut rng, &key_dist);
                 let e_supp = SparseErrorVector::random(&mut rng, &err_dist);
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)

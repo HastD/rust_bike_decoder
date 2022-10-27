@@ -199,7 +199,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         shifts
     }
 
-    pub fn max_shifted_product_weight_geq(&self, other: &Self, threshold: u8) -> bool {
+    pub fn max_shifted_product_weight_geq(&self, other: &Self, threshold: usize) -> bool {
         let shifts = self.relative_shifts(other);
         let mut shift_counts = [0; LENGTH];
         for i in 0..WEIGHT {
@@ -214,7 +214,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         false
     }
 
-    pub fn shifts_above_threshold(&self, threshold: u8) -> bool {
+    pub fn shifts_above_threshold(&self, threshold: usize) -> bool {
         let length = self.length();
         let mut shift_counts = [0; LENGTH];
         for i in 0..WEIGHT {

@@ -30,6 +30,7 @@ pub fn bgf_decoder(
 }
 
 pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SIZE_AVX]; 2] {
+    // Duplicate the syndrome to precompute cyclic shifts and avoid modulo operations
     s.duplicate_up_to(BLOCK_LENGTH);
     let h_supp = [key.h0().support(), key.h1().support()];
     let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
@@ -46,14 +47,9 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SI
     }
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
-            let upc_k_i = &mut upc[k][i];
             for &j in h_supp[k] {
-                let mut idx = i.wrapping_add(j as usize);
-                if idx >= BLOCK_LENGTH {
-                    idx = idx.wrapping_sub(BLOCK_LENGTH);
-                }
-                // idx is (i + j) % BLOCK_LENGTH
-                *upc_k_i = upc_k_i.wrapping_add(s.get(idx));
+                // If i + j >= BLOCK_LENGTH, this wraps around because we duplicated s
+                upc[k][i] += s.get(i.wrapping_add(j as usize));
             }
         }
     }

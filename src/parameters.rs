@@ -2,7 +2,6 @@ pub const BLOCK_LENGTH: usize = 587;
 pub const BLOCK_WEIGHT: usize = 15;
 pub const ERROR_WEIGHT: usize = 18;
 pub const BGF_THRESHOLD: u32 = 3;
-pub const WEAK_KEY_THRESHOLD: u8 = 4;
 pub const NB_ITER: usize = 7;
 // threshold function takes max(threshold, BF_THRESHOLD_MIN)
 pub const BF_THRESHOLD_MIN: usize = (BLOCK_WEIGHT + 1)/2;
