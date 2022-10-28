@@ -1,5 +1,5 @@
 pub mod decoder;
-pub mod graphs;
+//pub mod graphs;
 pub mod keys;
 pub mod parameters;
 pub mod random;
@@ -7,16 +7,25 @@ pub mod syndrome;
 pub mod threshold;
 pub mod vectors;
 
-use crate::parameters::*;
-use crate::keys::Key;
-use crate::threshold::ThresholdCache;
-use crate::vectors::SparseErrorVector;
-use crate::syndrome::Syndrome;
+use crate::{
+    parameters::*,
+    keys::Key,
+    threshold::ThresholdCache,
+    vectors::SparseErrorVector,
+    syndrome::Syndrome
+};
+use std::{
+    cmp,
+    collections::HashMap,
+    fmt::Display,
+    fs::File,
+    io::Write,
+    sync::mpsc,
+    time::{Duration, Instant},
+    thread
+};
 use clap::Parser;
 use rand::Rng;
-use std::cmp;
-use std::{fmt::Display, fs::File, io::Write};
-use std::time::{Duration, Instant};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -35,6 +44,8 @@ struct Args {
     recordmax: Option<u32>,
     #[arg(short,long,help="Save to disk frequency [default only at end]")]
     savefreq: Option<u32>,
+    #[arg(long,default_value_t=1,help="Number of threads")]
+    threads: u32,
     #[arg(short,long)]
     verbose: bool,
 }
@@ -44,7 +55,7 @@ fn decoding_trial<R: Rng + ?Sized>(
     weak_key_threshold: usize,
     rng: &mut R,
     threshold_cache: &mut ThresholdCache
-) -> (Key, SparseErrorVector, bool) {
+) -> DecodingResult {
     let key = match weak_key_filter {
         0 => Key::random(rng),
         -1 => Key::random_non_weak(weak_key_threshold, rng),
@@ -56,7 +67,70 @@ fn decoding_trial<R: Rng + ?Sized>(
     let e_supp = SparseErrorVector::random(rng);
     let mut syn = Syndrome::from_sparse(&key, &e_supp);
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
-    (key, e_supp, success)
+    DecodingResult { key, e_supp, success }
+}
+
+struct DecodingResult {
+    key: Key,
+    e_supp: SparseErrorVector,
+    success: bool
+}
+
+#[derive(Copy,Clone)]
+struct ThreadStats {
+    thread_id: u32,
+    failure_count: u32,
+    trials_completed: u32,
+    runtime: Duration,
+    done: bool
+}
+
+enum DecoderMessage {
+    TrialResult(DecodingResult),
+    Stats(ThreadStats)
+}
+
+// Runs decoding_trial in a loop, sending decoding failures (as they occur) and trial
+// statistics (periodically) via an asynchronous mpsc sender.
+fn trial_loop_async(
+    thread_id: u32,
+    number_of_trials: u32,
+    weak_key_filter: i8,
+    weak_key_threshold: usize,
+    save_frequency: u32,
+    tx: mpsc::Sender<DecoderMessage>
+) {
+    let start_time = Instant::now();
+    let mut rng = crate::random::get_rng();
+    let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
+    let mut cache = ThresholdCache::with_parameters(r, d, t);
+    let mut failure_count = 0;
+    for i in 0..number_of_trials {
+        let result = decoding_trial(weak_key_filter, weak_key_threshold, &mut rng, &mut cache);
+        if !result.success {
+            failure_count += 1;
+            let message = DecoderMessage::TrialResult(result);
+            tx.send(message).expect("Error sending decoding failure to main thread");
+        }
+        if i != 0 && i % save_frequency == 0 {
+            let message = DecoderMessage::Stats(ThreadStats {
+                thread_id,
+                failure_count,
+                trials_completed: i,
+                runtime: start_time.elapsed(),
+                done: false
+            });
+            tx.send(message).expect("Error sending thread stats to main thread");
+        }
+    }
+    let message = DecoderMessage::Stats(ThreadStats {
+        thread_id,
+        failure_count,
+        trials_completed: number_of_trials,
+        runtime: start_time.elapsed(),
+        done: true
+    });
+    tx.send(message).expect("Error sending thread stats to main thread");
 }
 
 fn build_json(
@@ -94,81 +168,139 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
     };
 }
 
+fn print_end_message(failure_count: u32, number_of_trials: u32, runtime: Duration) {
+    println!("Trials: {}", number_of_trials);
+    println!("Decoding failures: {}", failure_count);
+    let dfr = failure_count as f64 / number_of_trials as f64;
+    println!("log2(DFR): {:.2}", dfr.log2());
+    println!("Runtime: {:.3} s", runtime.as_secs_f64());
+    let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
+    let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
+    if avg_mcs >= 100 {
+        println!("Average: {} μs", avg_mcs);
+    } else if avg_mcs >= 10 {
+        println!("Average: {}.{} μs", avg_mcs, ns_rem / 100);
+    } else if avg_mcs >= 1 {
+        println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem / 10, width=2);
+    } else {
+        println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem, width=3);
+    }
+}
+
 fn main() {
     let args = Args::parse();
     let number_of_trials = args.number;
     let weak_key_threshold = args.weak_key_threshold;
     let weak_key_filter = args.weak_keys;
+    let thread_count = cmp::max(args.threads, 1);
     let record_max = args.recordmax.unwrap_or(number_of_trials);
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(number_of_trials));
-
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
-    let mut rng = crate::random::get_rng();
-    let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
     let mut failure_count = 0;
     let mut decoding_failures: Vec<(Key, SparseErrorVector)> = Vec::new();
     if args.verbose {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
-        println!(
-            "    r = {}, d = {}, t = {}, iterations = {}, tau = {}, T = {}",
-            r, d, t, NB_ITER, BGF_THRESHOLD, weak_key_threshold
-        );
+        println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}, T = {}",
+            r, d, t, NB_ITER, BGF_THRESHOLD, weak_key_threshold);
+        if thread_count > 1 {
+            println!("[running with {} threads]\n", thread_count);
+        }
     }
     let start_time = Instant::now();
-    for i in 0..number_of_trials {
-        let (key, e_supp, success) = decoding_trial(
-            weak_key_filter, weak_key_threshold,
-            &mut rng, &mut threshold_cache
-        );
-        if !success {
-            failure_count += 1;
-            if failure_count <= record_max {
-                if args.verbose {
-                    println!("Decoding failure found!");
-                    println!("Key: {}\nError vector: {}", key, e_supp);
-                    if failure_count == record_max {
-                        println!("Maximum number of decoding failures recorded.");
+    if thread_count > 1 {
+        let (tx, rx) = mpsc::channel();
+        let trials_per_thread = number_of_trials / thread_count;
+        let trials_remainder = number_of_trials % thread_count;
+        for thread_id in 0..thread_count {
+            let tx_clone = tx.clone();
+            thread::spawn(move || {
+                let number_of_trials = trials_per_thread + if thread_id == 0
+                    { trials_remainder } else { 0 };
+                trial_loop_async(thread_id, number_of_trials, weak_key_filter,
+                    weak_key_threshold, save_frequency, tx_clone);
+            });
+        }
+        let mut open_thread_count = thread_count;
+        let mut thread_stats: HashMap<u32, ThreadStats> = HashMap::with_capacity(thread_count as usize);
+        for received in rx {
+            match received {
+                DecoderMessage::TrialResult(result) => {
+                    if !result.success {
+                        failure_count += 1;
+                        if failure_count <= record_max {
+                            if args.verbose {
+                                println!("Decoding failure found!");
+                                println!("Key: {}\nError vector: {}", result.key, result.e_supp);
+                                if failure_count == record_max {
+                                    println!("Maximum number of decoding failures recorded.");
+                                }
+                            }
+                            decoding_failures.push((result.key, result.e_supp));
+                        }
                     }
                 }
-                decoding_failures.push((key, e_supp));
+                DecoderMessage::Stats(stats) => {
+                    thread_stats.insert(stats.thread_id, stats);
+                    let total_trials = thread_stats.values().map(|s| s.trials_completed).sum();
+                    let json_output = build_json(failure_count, total_trials, &decoding_failures,
+                        weak_key_filter, weak_key_threshold, start_time.elapsed());
+                    write_to_file_or_stdout(&args.output, &json_output);
+                    if stats.done {
+                        open_thread_count -= 1;
+                    }
+                    if args.verbose {
+                        let runtime = start_time.elapsed();
+                        println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
+                            failure_count, total_trials, runtime.as_secs_f64());
+                        if stats.done {
+                            println!("\nThread {} done. Statistics:", stats.thread_id);
+                            println!("    failure count: {}, trials: {}, runtime: {:.3}\n",
+                                stats.failure_count, stats.trials_completed,
+                                stats.runtime.as_secs_f64());
+                        }
+                    }
+                }
+            }
+            if open_thread_count == 0 {
+                break;
             }
         }
-        if i != 0 && i % save_frequency == 0 {
-            let runtime = start_time.elapsed();
-            let json_output = build_json(
-                failure_count, i, &decoding_failures, weak_key_filter, weak_key_threshold, runtime
-            );
-            write_to_file_or_stdout(&args.output, &json_output);
-            if args.verbose {
-                println!(
-                    "Found {} decoding failures in {} trials (runtime: {:.3} s)",
-                    failure_count, i, runtime.as_secs_f64()
-                );
+    } else { // synchronous decoding trial loop
+        let mut rng = crate::random::get_rng();
+        let mut cache = ThresholdCache::with_parameters(r, d, t);    
+        for i in 0..number_of_trials {
+            let result = decoding_trial(weak_key_filter, weak_key_threshold, &mut rng, &mut cache);
+            if !result.success {
+                failure_count += 1;
+                if failure_count <= record_max {
+                    if args.verbose {
+                        println!("Decoding failure found!");
+                        println!("Key: {}\nError vector: {}", result.key, result.e_supp);
+                        if failure_count == record_max {
+                            println!("Maximum number of decoding failures recorded.");
+                        }
+                    }
+                    decoding_failures.push((result.key, result.e_supp));
+                }
+            }
+            if i != 0 && i % save_frequency == 0 {
+                let runtime = start_time.elapsed();
+                let json_output = build_json(failure_count, i, &decoding_failures, weak_key_filter,
+                    weak_key_threshold, runtime);
+                write_to_file_or_stdout(&args.output, &json_output);
+                if args.verbose {
+                    println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
+                        failure_count, i, runtime.as_secs_f64());
+                }
             }
         }
     }
+    // Write final data and output end messages
     let runtime = start_time.elapsed();
-    let json_output = build_json(
-        failure_count, number_of_trials, &decoding_failures,
-        weak_key_filter, weak_key_threshold, runtime
-    );
+    let json_output = build_json(failure_count, number_of_trials, &decoding_failures,
+        weak_key_filter, weak_key_threshold, runtime);
     write_to_file_or_stdout(&args.output, &json_output);
     if args.verbose {
-        println!("Trials: {}", number_of_trials);
-        println!("Decoding failures: {}", failure_count);
-        let dfr = (failure_count as f64) / number_of_trials as f64;
-        println!("log2(DFR): {:.2}", dfr.log2());
-        println!("Runtime: {:.3} s", runtime.as_secs_f64());
-        let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
-        let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
-        if avg_mcs >= 100 {
-            println!("Average: {} μs", avg_mcs);
-        } else if avg_mcs >= 10 {
-            println!("Average: {}.{} μs", avg_mcs, ns_rem / 100);
-        } else if avg_mcs >= 1 {
-            println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem / 10, width=2);
-        } else {
-            println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem, width=3);
-        }
+        print_end_message(failure_count, number_of_trials, runtime);
     }
 }
