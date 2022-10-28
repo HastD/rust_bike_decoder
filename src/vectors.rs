@@ -77,11 +77,12 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         self.0.contains(index)
     }
 
-    pub fn random<R>(rng: &mut R, dist: &Uniform<Index>) -> Self
+    pub fn random<R>(rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
         let mut supp = [0 as Index; WEIGHT];
         let mut ctr = 0;
+        let dist = Uniform::new(0, LENGTH as Index);
         'outer: while ctr < WEIGHT {
             // Randomly generate element in the appropriate range
             supp[ctr] = dist.sample(rng);

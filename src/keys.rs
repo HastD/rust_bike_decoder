@@ -1,6 +1,6 @@
 use crate::vectors::{Index, SparseVector};
 use crate::parameters::*;
-use rand::{Rng, distributions::Uniform};
+use rand::Rng;
 use serde::{Serialize, Deserialize};
 use std::fmt;
 
@@ -48,10 +48,10 @@ impl Key {
         self.h0.length()
     }
 
-    pub fn random<R: Rng + ?Sized>(rng: &mut R, dist: &Uniform<Index>) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
-            h0: CyclicBlock::random(rng, dist),
-            h1: CyclicBlock::random(rng, dist)
+            h0: CyclicBlock::random(rng),
+            h1: CyclicBlock::random(rng)
         }
     }
 
@@ -63,21 +63,21 @@ impl Key {
         || self.h0.max_shifted_product_weight_geq(&self.h1, threshold)
     }
 
-    pub fn random_non_weak<R>(threshold: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
+    pub fn random_non_weak<R>(threshold: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
         loop {
-            let key = Self::random(rng, dist);
+            let key = Self::random(rng);
             if !key.is_weak(threshold) {
                 return key;
             }
         }
     }
 
-    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
+    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
-        let random_block = CyclicBlock::random(rng, dist);
+        let random_block = CyclicBlock::random(rng);
         let weak_block = CyclicBlock::random_weak_type1(thresh, rng);
         if rng.gen::<bool>() {
             Self { h0: weak_block, h1: random_block }
@@ -86,10 +86,10 @@ impl Key {
         }
     }
 
-    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R, dist: &Uniform<Index>) -> Self
+    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
-        let random_block = CyclicBlock::random(rng, dist);
+        let random_block = CyclicBlock::random(rng);
         let weak_block = CyclicBlock::random_weak_type2(thresh, rng);
         if rng.gen::<bool>() {
             Self { h0: weak_block, h1: random_block }
@@ -98,7 +98,7 @@ impl Key {
         }
     }
 
-    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R, _dist: &Uniform<Index>) -> Self
+    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
         let (h0, h1) = CyclicBlock::random_weak_type3(thresh, rng);

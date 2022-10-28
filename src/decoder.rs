@@ -113,6 +113,7 @@ pub fn bf_masked_iter(
 
 // Adapted from Valentin Vasseur's QC-MDPC decoder implementation
 // Multiplies a sparse vector of the given weight by a dense vector of the given length.
+// The dense vector should be duplicated in memory to precompute cyclic shifts.
 // Stores result in the provided output buffer.
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),

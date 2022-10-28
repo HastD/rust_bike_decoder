@@ -10,10 +10,10 @@ pub mod vectors;
 use crate::parameters::*;
 use crate::keys::Key;
 use crate::threshold::ThresholdCache;
-use crate::vectors::{Index, SparseErrorVector};
+use crate::vectors::SparseErrorVector;
 use crate::syndrome::Syndrome;
 use clap::Parser;
-use rand::{Rng, distributions::Uniform};
+use rand::Rng;
 use std::cmp;
 use std::{fmt::Display, fs::File, io::Write};
 use std::time::{Duration, Instant};
@@ -26,8 +26,8 @@ struct Args {
     number: u32,
     #[arg(short,long,default_value_t=0,
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
-    filter: i8,
-    #[arg(short='W',long,default_value_t=3,help="Weak key threshold")]
+    weak_keys: i8,
+    #[arg(short='T',long,default_value_t=3,help="Weak key threshold")]
     weak_key_threshold: usize,
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
@@ -43,19 +43,17 @@ fn decoding_trial<R: Rng + ?Sized>(
     weak_key_filter: i8,
     weak_key_threshold: usize,
     rng: &mut R,
-    key_dist: &Uniform<Index>,
-    err_dist: &Uniform<Index>,
     threshold_cache: &mut ThresholdCache
 ) -> (Key, SparseErrorVector, bool) {
     let key = match weak_key_filter {
-        0 => Key::random(rng, key_dist),
-        -1 => Key::random_non_weak(weak_key_threshold, rng, key_dist),
-        1 => Key::random_weak_type1(weak_key_threshold, rng, key_dist),
-        2 => Key::random_weak_type2(weak_key_threshold, rng, key_dist),
-        3 => Key::random_weak_type3(weak_key_threshold, rng, key_dist),
+        0 => Key::random(rng),
+        -1 => Key::random_non_weak(weak_key_threshold, rng),
+        1 => Key::random_weak_type1(weak_key_threshold, rng),
+        2 => Key::random_weak_type2(weak_key_threshold, rng),
+        3 => Key::random_weak_type3(weak_key_threshold, rng),
         _ => panic!("Invalid value for weak key filter (must be -1, 0 (default), 1, 2, or 3)")
     };
-    let e_supp = SparseErrorVector::random(rng, err_dist);
+    let e_supp = SparseErrorVector::random(rng);
     let mut syn = Syndrome::from_sparse(&key, &e_supp);
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
     (key, e_supp, success)
@@ -100,13 +98,11 @@ fn main() {
     let args = Args::parse();
     let number_of_trials = args.number;
     let weak_key_threshold = args.weak_key_threshold;
-    let weak_key_filter = args.filter;
+    let weak_key_filter = args.weak_keys;
     let record_max = args.recordmax.unwrap_or(number_of_trials);
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(number_of_trials));
 
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
-    let key_dist = crate::random::get_key_dist();
-    let err_dist = crate::random::get_err_dist();
     let mut rng = crate::random::get_rng();
     let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
     let mut failure_count = 0;
@@ -122,7 +118,7 @@ fn main() {
     for i in 0..number_of_trials {
         let (key, e_supp, success) = decoding_trial(
             weak_key_filter, weak_key_threshold,
-            &mut rng, &key_dist, &err_dist, &mut threshold_cache
+            &mut rng, &mut threshold_cache
         );
         if !success {
             failure_count += 1;
