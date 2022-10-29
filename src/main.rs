@@ -32,7 +32,7 @@ use serde_json::json;
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
-    number: u32,
+    number: u64,
     #[arg(short,long,default_value_t=0,
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
     weak_keys: i8,
@@ -41,11 +41,11 @@ struct Args {
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
     #[arg(short,long,help="Max number of decoding failures recorded [default all]")]
-    recordmax: Option<u32>,
+    recordmax: Option<u64>,
     #[arg(short,long,help="Save to disk frequency [default only at end]")]
-    savefreq: Option<u32>,
+    savefreq: Option<u64>,
     #[arg(long,default_value_t=1,help="Number of threads")]
-    threads: u32,
+    threads: u64,
     #[arg(short,long)]
     verbose: bool,
 }
@@ -78,9 +78,9 @@ struct DecodingResult {
 
 #[derive(Copy,Clone)]
 struct ThreadStats {
-    thread_id: u32,
-    failure_count: u32,
-    trials_completed: u32,
+    thread_id: u64,
+    failure_count: u64,
+    trials_completed: u64,
     runtime: Duration,
     done: bool
 }
@@ -93,11 +93,11 @@ enum DecoderMessage {
 // Runs decoding_trial in a loop, sending decoding failures (as they occur) and trial
 // statistics (periodically) via an asynchronous mpsc sender.
 fn trial_loop_async(
-    thread_id: u32,
-    number_of_trials: u32,
+    thread_id: u64,
+    number_of_trials: u64,
     weak_key_filter: i8,
     weak_key_threshold: usize,
-    save_frequency: u32,
+    save_frequency: u64,
     tx: mpsc::Sender<DecoderMessage>
 ) {
     let start_time = Instant::now();
@@ -110,7 +110,7 @@ fn trial_loop_async(
         if !result.success {
             failure_count += 1;
             let message = DecoderMessage::TrialResult(result);
-            tx.send(message).expect("Error sending decoding failure to main thread");
+            tx.send(message).expect("Error transmitting decoding failure");
         }
         if i != 0 && i % save_frequency == 0 {
             let message = DecoderMessage::Stats(ThreadStats {
@@ -120,7 +120,7 @@ fn trial_loop_async(
                 runtime: start_time.elapsed(),
                 done: false
             });
-            tx.send(message).expect("Error sending thread stats to main thread");
+            tx.send(message).expect("Error transmitting thread stats");
         }
     }
     let message = DecoderMessage::Stats(ThreadStats {
@@ -130,12 +130,12 @@ fn trial_loop_async(
         runtime: start_time.elapsed(),
         done: true
     });
-    tx.send(message).expect("Error sending thread stats to main thread");
+    tx.send(message).expect("Error transmitting thread stats");
 }
 
 fn build_json(
-    failure_count: u32,
-    number_of_trials: u32,
+    failure_count: u64,
+    number_of_trials: u64,
     decoding_failures: &Vec<(Key, SparseErrorVector)>,
     weak_key_filter: i8,
     weak_key_threshold: usize,
@@ -160,7 +160,7 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
     match path {
         Some(filename) => {
             let mut file = File::create(filename).expect("Must be able to open file");
-            file.write(&data.to_string().into_bytes()).expect("Must be able to write to file");
+            file.write_all(&data.to_string().into_bytes()).expect("Must be able to write to file");
         }
         None => {
             println!("{}", data);
@@ -168,7 +168,7 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
     };
 }
 
-fn print_end_message(failure_count: u32, number_of_trials: u32, runtime: Duration) {
+fn print_end_message(failure_count: u64, number_of_trials: u64, runtime: Duration) {
     println!("Trials: {}", number_of_trials);
     println!("Decoding failures: {}", failure_count);
     let dfr = failure_count as f64 / number_of_trials as f64;
@@ -192,7 +192,7 @@ fn main() {
     let number_of_trials = args.number;
     let weak_key_threshold = args.weak_key_threshold;
     let weak_key_filter = args.weak_keys;
-    let thread_count = cmp::max(args.threads, 1);
+    let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
     let record_max = args.recordmax.unwrap_or(number_of_trials);
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(number_of_trials));
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
@@ -207,11 +207,13 @@ fn main() {
         }
     }
     let start_time = Instant::now();
-    if thread_count > 1 {
+    if thread_count > 1 { // multi-threaded mode
+        // Set up (transmitter, receiver) pair and divide trials among threads
         let (tx, rx) = mpsc::channel();
         let trials_per_thread = number_of_trials / thread_count;
         let trials_remainder = number_of_trials % thread_count;
         for thread_id in 0..thread_count {
+            // Start the threads, passing them each a copy of the transmitter
             let tx_clone = tx.clone();
             thread::spawn(move || {
                 let number_of_trials = trials_per_thread + if thread_id == 0
@@ -220,10 +222,13 @@ fn main() {
                     weak_key_threshold, save_frequency, tx_clone);
             });
         }
+        // Track thread stats and how many threads are still in progress
         let mut open_thread_count = thread_count;
-        let mut thread_stats: HashMap<u32, ThreadStats> = HashMap::with_capacity(thread_count as usize);
+        let mut thread_stats: HashMap<u64, ThreadStats> = HashMap::with_capacity(thread_count as usize);
+        // Wait for messages
         for received in rx {
             match received {
+                // If we receive a decoding failure, record it and increment the failure count
                 DecoderMessage::TrialResult(result) => {
                     if !result.success {
                         failure_count += 1;
@@ -239,6 +244,7 @@ fn main() {
                         }
                     }
                 }
+                // If we receive updated thread statistics, record and save those
                 DecoderMessage::Stats(stats) => {
                     thread_stats.insert(stats.thread_id, stats);
                     let total_trials = thread_stats.values().map(|s| s.trials_completed).sum();
@@ -262,7 +268,7 @@ fn main() {
                 }
             }
             if open_thread_count == 0 {
-                break;
+                break; // all threads completed successfully, so wrap up
             }
         }
     } else { // synchronous decoding trial loop

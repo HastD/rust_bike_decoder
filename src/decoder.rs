@@ -89,20 +89,11 @@ pub fn bf_masked_iter(
     thr: u32
 ) {
     let upc = unsatisfied_parity_checks(key, s);
-    let mut flipped_positions = [[0u8; BLOCK_LENGTH]; 2];
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
             if mask[k][i] && upc[k][i] as u32 >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
-                flipped_positions[k][i] = 1;
-            }
-        }
-    }
-    // Recompute syndrome according to flipped bits
-    for k in 0..2 {
-        for pos in 0..BLOCK_LENGTH {
-            if flipped_positions[k][pos] == 1 {
-                s.recompute_flipped_bit(key, k, pos);
+                s.recompute_flipped_bit(key, k, i);
             }
         }
     }
