@@ -74,7 +74,7 @@ pub fn bf_iter(
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
                 black[k][i] = true;
-            } else if upc[0][i] as u32 >= gray_thr {
+            } else if upc[k][i] as u32 >= gray_thr {
                 gray[k][i] = true;
             }
         }
