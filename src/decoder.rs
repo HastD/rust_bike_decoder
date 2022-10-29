@@ -17,7 +17,8 @@ pub fn bgf_decoder(
         let thr = threshold_cache.get(ws).expect("threshold should not be NaN");
         bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
         if iter_index == 0 {
-            let masked_thr = (BLOCK_WEIGHT as u32 + 1) / 2 + 1;
+            let masked_thr = <u8>::try_from((BLOCK_WEIGHT + 1) / 2 + 1)
+                .expect("Weight >= 509 not supported");
             bf_masked_iter(key, s, &mut e_out, black, masked_thr);
             bf_masked_iter(key, s, &mut e_out, gray, masked_thr);
         }
@@ -64,17 +65,17 @@ pub fn bf_iter(
     e_out: &mut ErrorVector,
     black: &mut [[bool; BLOCK_LENGTH]; 2],
     gray: &mut [[bool; BLOCK_LENGTH]; 2],
-    thr: u32
+    thr: u8
 ) {
     let upc = unsatisfied_parity_checks(key, s);
     let gray_thr = thr - BGF_THRESHOLD;
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
-            if upc[k][i] as u32 >= thr {
+            if upc[k][i] >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
                 black[k][i] = true;
-            } else if upc[k][i] as u32 >= gray_thr {
+            } else if upc[k][i] >= gray_thr {
                 gray[k][i] = true;
             }
         }
@@ -86,12 +87,12 @@ pub fn bf_masked_iter(
     s: &mut Syndrome,
     e_out: &mut ErrorVector,
     mask: [[bool; BLOCK_LENGTH]; 2],
-    thr: u32
+    thr: u8
 ) {
     let upc = unsatisfied_parity_checks(key, s);
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
-            if mask[k][i] && upc[k][i] as u32 >= thr {
+            if mask[k][i] && upc[k][i] >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
             }

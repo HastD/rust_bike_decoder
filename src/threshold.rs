@@ -8,7 +8,7 @@ fn big_binomial(n: u32, k: u32) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
 }
 
-pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u32> {
+pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
     if ws == 0 {
         return Some(1);
     }
@@ -29,14 +29,16 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u32> {
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
     if threshold.is_nan() { None } else {
-        // modification to threshold according to Vasseur's thesis, section 6.1.3.1
-        let threshold = cmp::max(threshold as u32, BF_THRESHOLD_MIN as u32);
+        let threshold = <u8>::try_from(threshold as u32).expect("Thresholds >= 256 not supported");
+        let bf_threshold_min = <u8>::try_from(BF_THRESHOLD_MIN).expect("Weight >= 509 not supported");
+        // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
+        let threshold = cmp::max(threshold, bf_threshold_min);
         Some(threshold)
     }
 }
 
 pub struct ThresholdCache {
-    cache: FxHashMap<u32, Option<u32>>,
+    cache: FxHashMap<u32, Option<u8>>,
     pub r: u32,
     pub d: u32,
     pub t: u32
@@ -50,7 +52,7 @@ impl ThresholdCache {
         }
     }
 
-    pub fn get(&mut self, ws: u32) -> Option<u32> {
+    pub fn get(&mut self, ws: u32) -> Option<u8> {
         *self.cache.entry(ws).or_insert_with(|| exact_threshold(ws, self.r, self.d, self.t))
     }
 

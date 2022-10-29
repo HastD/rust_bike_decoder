@@ -34,22 +34,23 @@ impl Syndrome {
         Self::from(s)
     }
 
-    pub fn recompute_from(&mut self, key: &Key, err: &ErrorVector) {
-        self.set_all_zero();
+    pub fn from_dense(key: &Key, err: &ErrorVector) -> Self {
+        let mut s = [0u8; DOUBLE_SIZE_AVX];
         for i in 0..BLOCK_LENGTH {
             if err.get(i) == 1 {
                 for &j in key.h0().support() {
-                    self.flip((i + j as usize) % BLOCK_LENGTH);
+                    s[(i + j as usize) % BLOCK_LENGTH] ^= 1;
                 }
             }
         }
         for i in 0..BLOCK_LENGTH {
             if err.get(BLOCK_LENGTH + i) == 1 {
                 for &j in key.h1().support() {
-                    self.flip((i + j as usize) % BLOCK_LENGTH);
+                    s[(i + j as usize) % BLOCK_LENGTH] ^= 1;
                 }
             }
         }
+        Self::from(s)
     }
 
     pub fn recompute_flipped_bit(&mut self, key: &Key, block_idx: usize, pos: usize) {

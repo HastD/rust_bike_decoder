@@ -96,6 +96,17 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Self(supp)
     }
 
+    pub fn random_sorted<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        let mut supp = [0 as Index; WEIGHT];
+        for i in 0..WEIGHT as usize {
+            // Randomly generate element in the appropriate range
+            let rand = rng.gen_range(0..LENGTH-i);
+            // Insert in sorted order
+            insert_sorted_inc(&mut supp, rand as Index, i);
+        }
+        Self(supp)
+    }
+
     pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
@@ -176,7 +187,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn dense(&self) -> DenseVector<LENGTH> {
         let mut v = DenseVector::zero();
         for &i in self.support() {
-            v.flip(i as usize);
+            v.set_one(i as usize);
         }
         v
     }

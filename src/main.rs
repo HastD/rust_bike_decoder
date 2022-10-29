@@ -26,6 +26,7 @@ use std::{
 };
 use clap::Parser;
 use rand::Rng;
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -76,7 +77,7 @@ struct DecodingResult {
     success: bool
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Serialize,Deserialize)]
 struct ThreadStats {
     thread_id: u64,
     failure_count: u64,
@@ -139,7 +140,8 @@ fn build_json(
     decoding_failures: &Vec<(Key, SparseErrorVector)>,
     weak_key_filter: i8,
     weak_key_threshold: usize,
-    runtime: Duration
+    runtime: Duration,
+    thread_stats: Option<serde_json::Value>
 ) -> serde_json::Value {
     json!({
         "r": BLOCK_LENGTH,
@@ -152,7 +154,8 @@ fn build_json(
         "trials": number_of_trials,
         "failure_count": failure_count,
         "decoding_failures": decoding_failures,
-        "runtime": runtime.as_secs_f64()
+        "runtime": runtime.as_secs_f64(),
+        "thread_stats": thread_stats
     })
 }
 
@@ -247,15 +250,15 @@ fn main() {
                 // If we receive updated thread statistics, record and save those
                 DecoderMessage::Stats(stats) => {
                     thread_stats.insert(stats.thread_id, stats);
-                    let total_trials = thread_stats.values().map(|s| s.trials_completed).sum();
+                    let total_trials = thread_stats.values().map(|st| st.trials_completed).sum();
+                    let runtime = start_time.elapsed();
                     let json_output = build_json(failure_count, total_trials, &decoding_failures,
-                        weak_key_filter, weak_key_threshold, start_time.elapsed());
+                        weak_key_filter, weak_key_threshold, runtime, Some(json!(thread_stats)));
                     write_to_file_or_stdout(&args.output, &json_output);
                     if stats.done {
                         open_thread_count -= 1;
                     }
                     if args.verbose {
-                        let runtime = start_time.elapsed();
                         println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                             failure_count, total_trials, runtime.as_secs_f64());
                         if stats.done {
@@ -292,7 +295,7 @@ fn main() {
             if i != 0 && i % save_frequency == 0 {
                 let runtime = start_time.elapsed();
                 let json_output = build_json(failure_count, i, &decoding_failures, weak_key_filter,
-                    weak_key_threshold, runtime);
+                    weak_key_threshold, runtime, None);
                 write_to_file_or_stdout(&args.output, &json_output);
                 if args.verbose {
                     println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
@@ -300,13 +303,13 @@ fn main() {
                 }
             }
         }
+        // Write final data
+        let runtime = start_time.elapsed();
+        let json_output = build_json(failure_count, number_of_trials, &decoding_failures,
+            weak_key_filter, weak_key_threshold, runtime, None);
+        write_to_file_or_stdout(&args.output, &json_output);
     }
-    // Write final data and output end messages
-    let runtime = start_time.elapsed();
-    let json_output = build_json(failure_count, number_of_trials, &decoding_failures,
-        weak_key_filter, weak_key_threshold, runtime);
-    write_to_file_or_stdout(&args.output, &json_output);
     if args.verbose {
-        print_end_message(failure_count, number_of_trials, runtime);
+        print_end_message(failure_count, number_of_trials, start_time.elapsed());
     }
 }
