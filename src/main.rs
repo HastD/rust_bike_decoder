@@ -47,7 +47,7 @@ struct Args {
     savefreq: Option<u64>,
     #[arg(long,default_value_t=1,help="Number of threads")]
     threads: u64,
-    #[arg(short,long)]
+    #[arg(short,long,help="Print decoding failures as they are found")]
     verbose: bool,
 }
 
