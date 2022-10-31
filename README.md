@@ -55,6 +55,8 @@ The command-line program runs the following steps in a loop a number of times sp
 
 The program outputs the resulting data in JSON format (either to a file specified with the `-o` option or to `stdout`). Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. One particularly useful option for long-running trials is `-s`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
 
+Values for the `-N`, `-r`, and `-s` options can be given in scientific notation.
+
 ## Example 
 
 To run 1 million trials and print the results in JSON format to the terminal:
@@ -66,5 +68,5 @@ bike_decoder -N 1000000
 To run 100 million trials on non-weak keys only, with a weak key threshold of 4, saving the results to `results.json` every 1 million trials, using four threads and giving verbose output (printing decoding failures to `stdout` as they are found, and printing summary information at the beginning and end), run:
 
 ```sh
-bike_decoder -N=100000000 -w=-1 -T=4 -o=results.json -s=1000000 --threads=4 -v
+bike_decoder -N=1e8 -w=-1 -T=4 -o=results.json -s=1e6 --threads=4 -v
 ```

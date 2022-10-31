@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub mod decoder;
 //pub mod graphs;
 pub mod keys;
@@ -33,7 +35,7 @@ use serde_json::json;
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
-    number: u64,
+    number: f64, // parsed as scientific notation to u64
     #[arg(short,long,default_value_t=0,
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
     weak_keys: i8,
@@ -42,9 +44,9 @@ struct Args {
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
     #[arg(short,long,help="Max number of decoding failures recorded [default all]")]
-    recordmax: Option<u64>,
+    recordmax: Option<f64>, // parsed as scientific notation to u64
     #[arg(short,long,help="Save to disk frequency [default only at end]")]
-    savefreq: Option<u64>,
+    savefreq: Option<f64>, // parsed as scientific notation to u64
     #[arg(long,default_value_t=1,help="Number of threads")]
     threads: u64,
     #[arg(short,long,help="Print decoding failures as they are found")]
@@ -71,13 +73,14 @@ fn decoding_trial<R: Rng + ?Sized>(
     DecodingResult { key, e_supp, success }
 }
 
+#[derive(Debug)]
 struct DecodingResult {
     key: Key,
     e_supp: SparseErrorVector,
     success: bool
 }
 
-#[derive(Copy,Clone,Serialize,Deserialize)]
+#[derive(Copy,Clone,Debug,Serialize,Deserialize)]
 struct ThreadStats {
     thread_id: u64,
     failure_count: u64,
@@ -86,6 +89,7 @@ struct ThreadStats {
     done: bool
 }
 
+#[derive(Debug)]
 enum DecoderMessage {
     TrialResult(DecodingResult),
     Stats(ThreadStats)
@@ -192,12 +196,12 @@ fn print_end_message(failure_count: u64, number_of_trials: u64, runtime: Duratio
 
 fn main() {
     let args = Args::parse();
-    let number_of_trials = args.number;
+    let number_of_trials = args.number as u64;
     let weak_key_threshold = args.weak_key_threshold;
     let weak_key_filter = args.weak_keys;
     let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
-    let record_max = args.recordmax.unwrap_or(number_of_trials);
-    let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(number_of_trials));
+    let record_max = args.recordmax.unwrap_or(args.number) as u64;
+    let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(args.number) as u64);
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let mut failure_count = 0;
     let mut decoding_failures: Vec<(Key, SparseErrorVector)> = Vec::new();

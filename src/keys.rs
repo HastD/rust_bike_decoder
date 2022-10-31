@@ -6,7 +6,7 @@ use std::fmt;
 
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Key {
     h0: CyclicBlock,
     h1: CyclicBlock,

@@ -37,6 +37,7 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
     }
 }
 
+#[derive(Debug)]
 pub struct ThresholdCache {
     cache: FxHashMap<u32, Option<u8>>,
     pub r: u32,

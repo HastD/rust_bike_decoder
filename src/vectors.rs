@@ -45,7 +45,7 @@ fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
 }
 
 // Sparse vector of fixed weight and length over GF(2)
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     #[serde(with = "serde_arrays")]
     [Index; WEIGHT]
@@ -270,7 +270,7 @@ impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
 }
 
 // Dense vectors of fixed length over GF(2)
-#[derive(Clone, cmp::PartialEq, cmp::Eq)]
+#[derive(Debug, Clone, cmp::PartialEq, cmp::Eq)]
 pub struct DenseVector<const LENGTH: usize>([u8; LENGTH]);
 
 impl<const LENGTH: usize> DenseVector<LENGTH> {
