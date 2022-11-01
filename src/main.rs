@@ -197,8 +197,8 @@ fn print_end_message(failure_count: u64, number_of_trials: u64, runtime: Duratio
 fn main() {
     let args = Args::parse();
     let number_of_trials = args.number as u64;
-    let weak_key_threshold = args.weak_key_threshold;
     let weak_key_filter = args.weak_keys;
+    let weak_key_threshold = if weak_key_filter == 0 { 0 } else { args.weak_key_threshold };
     let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
     let record_max = args.recordmax.unwrap_or(args.number) as u64;
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(args.number) as u64);
@@ -207,8 +207,17 @@ fn main() {
     let mut decoding_failures: Vec<(Key, SparseErrorVector)> = Vec::new();
     if args.verbose {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
-        println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}, T = {}",
-            r, d, t, NB_ITER, BGF_THRESHOLD, weak_key_threshold);
+        println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}",
+            r, d, t, NB_ITER, BGF_THRESHOLD);
+        match weak_key_filter {
+            -1 => {
+                println!("    Testing only non-weak keys (T = {})", weak_key_threshold);
+            }
+            0 => {}
+            filter => {
+                println!("    Testing only weak keys of type {} (T = {})", filter, weak_key_threshold);
+            }
+        }
         if thread_count > 1 {
             println!("[running with {} threads]\n", thread_count);
         }
