@@ -8,10 +8,7 @@ fn big_binomial(n: u32, k: u32) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
 }
 
-pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
-    if ws == 0 {
-        return Some(1);
-    }
+fn threshold_constants(ws: u32, r: u32, d: u32, t: u32) -> (f64, f64) {
     let n = 2*r;
     let w = 2*d;
     let n_minus_w = n - w;
@@ -23,6 +20,36 @@ pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
     let x = x.expect("Threshold computation should not overflow");
     let pi1 = (ws as f64 + x) / (t * d) as f64;
     let pi0 = ((w * ws) as f64 - x) / ((n - t) * d) as f64;
+    (pi0, pi1)
+}
+
+pub fn exact_threshold_ineq(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
+    if ws == 0 {
+        return Some(1_u8);
+    }
+    let n = 2*r;
+    let (pi0, pi1) = threshold_constants(ws, r, d, t);
+    let mut threshold: i32 = 1;
+    let d = d as i32;
+    while threshold <= d && t as f64 * pi1.powi(threshold) * (1.0 - pi1).powi(d - threshold)
+                    < (n - t) as f64 * pi0.powi(threshold) * (1.0 - pi0).powi(d - threshold) {
+        if threshold < u8::MAX as i32 {
+            threshold = threshold.wrapping_add(1);
+        } else {
+            return None;
+        }
+    }
+    let bf_threshold_min = <u8>::try_from(BF_THRESHOLD_MIN).expect("Weight >= 509 not supported");
+    let threshold = cmp::max(threshold as u8, bf_threshold_min);
+    Some(threshold)
+}
+
+pub fn exact_threshold(ws: u32, r: u32, d: u32, t: u32) -> Option<u8> {
+    if ws == 0 {
+        return Some(1);
+    }
+    let n = 2*r;
+    let (pi0, pi1) = threshold_constants(ws, r, d, t);
 
     let log_frac = ((1.0 - pi0) / (1.0 - pi1)).log2();
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
@@ -54,7 +81,7 @@ impl ThresholdCache {
     }
 
     pub fn get(&mut self, ws: u32) -> Option<u8> {
-        *self.cache.entry(ws).or_insert_with(|| exact_threshold(ws, self.r, self.d, self.t))
+        *self.cache.entry(ws).or_insert_with(|| exact_threshold_ineq(ws, self.r, self.d, self.t))
     }
 
     pub fn is_computed(&self, ws: &u32) -> bool {

@@ -3,7 +3,7 @@ use bike_decoder::{
     keys::Key,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
-    threshold::ThresholdCache,
+    threshold::{self, ThresholdCache},
     random,
     decoder,
     parameters::*
@@ -61,6 +61,13 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
             |inputs| black_box(decoder::unsatisfied_parity_checks(&inputs.0, &mut inputs.1)),
             BatchSize::SmallInput
         )
+    });
+    c.bench_function("threshold", |b| {
+        use rand::distributions::{Distribution, Uniform};
+        let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
+        let mut rng = random::get_rng();
+        let dist = Uniform::new(0, r);
+        b.iter(|| threshold::exact_threshold_ineq(dist.sample(&mut rng), r, d, t))
     });
 }
 
