@@ -242,6 +242,17 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         }
         false
     }
+
+    pub fn random_non_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
+        where R: Rng + ?Sized
+    {
+        loop {
+            let block = Self::random(rng);
+            if !block.shifts_above_threshold(thresh) {
+                return block;
+            }
+        }
+    }
 }
 
 impl<const W: usize, const L: usize> cmp::PartialEq for SparseVector<W, L> {
