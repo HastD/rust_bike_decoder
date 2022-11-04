@@ -67,12 +67,10 @@ impl Key {
         where R: Rng + ?Sized
     {
         loop {
-            let key = Self {
-                h0: CyclicBlock::random_non_weak_type2(threshold, rng),
-                h1: CyclicBlock::random_non_weak_type2(threshold, rng)
-            };
-            if !key.h0.max_shifted_product_weight_geq(&key.h1, threshold) {
-                return key;
+            let h0 = CyclicBlock::random_non_weak_type2(threshold, rng);
+            let h1 = CyclicBlock::random_non_weak_type2(threshold, rng);
+            if !h0.max_shifted_product_weight_geq(&h1, threshold) {
+                return Self { h0, h1 };
             }
         }
     }

@@ -141,7 +141,7 @@ fn trial_loop_async(
 fn build_json(
     failure_count: u64,
     number_of_trials: u64,
-    decoding_failures: &Vec<(Key, SparseErrorVector)>,
+    decoding_failures: &[(Key, SparseErrorVector)],
     weak_key_filter: i8,
     weak_key_threshold: usize,
     runtime: Duration,
