@@ -52,6 +52,15 @@ pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
 );
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
+    pub fn from_support(supp: [Index; WEIGHT]) -> Self {
+        for i in 0..WEIGHT {
+            for j in (i+1)..WEIGHT {
+                assert_ne!(supp[i], supp[j], "Support indices must all be distinct");
+            }
+        }
+        Self(supp)
+    }
+
     #[inline]
     pub fn weight(&self) -> usize {
         WEIGHT

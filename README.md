@@ -30,6 +30,10 @@ Options:
           Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only) [default: 0]
   -T, --weak-key-threshold <WEAK_KEY_THRESHOLD>
           Weak key threshold [default: 3]
+  -S, --atls <ATLS>
+          Use error vectors from near-codeword set A_{t,l}(S) [possible values: C, N, 2N]
+  -l, --atls-overlap <ATLS_OVERLAP>
+          Overlap parameter l in A_{t,l}(S)
   -o, --output <OUTPUT>
           Output file [default stdout]
   -r, --recordmax <RECORDMAX>
@@ -56,6 +60,8 @@ The command-line program runs the following steps in a loop a number of times sp
 The program outputs the resulting data in JSON format (either to a file specified with the `-o` option or to `stdout`). Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. One particularly useful option for long-running trials is `-s`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
 
 Values for the `-N`, `-r`, and `-s` options can be given in scientific notation.
+
+The `--atls` (or `-S`) and `--atls-overlap` (or `-l`) options, if either is provided, must both be given. They cause the error vectors to instead be generated from the sets of near-codewords `A_{t,l}(S)` described in Vasseur's thesis.
 
 ## Example 
 

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod atls;
 pub mod decoder;
 pub mod graphs;
 pub mod keys;

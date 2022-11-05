@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod atls;
 pub mod decoder;
 //pub mod graphs;
 pub mod keys;
@@ -10,11 +11,12 @@ pub mod threshold;
 pub mod vectors;
 
 use crate::{
-    parameters::*,
+    atls::{NearCodewordSet, ElementOfAtlS, TaggedErrorVector},
     keys::Key,
+    parameters::*,
+    syndrome::Syndrome,
     threshold::ThresholdCache,
     vectors::SparseErrorVector,
-    syndrome::Syndrome
 };
 use std::{
     cmp,
@@ -24,7 +26,7 @@ use std::{
     io::Write,
     sync::mpsc,
     time::{Duration, Instant},
-    thread
+    thread,
 };
 use clap::Parser;
 use rand::Rng;
@@ -41,6 +43,11 @@ struct Args {
     weak_keys: i8,
     #[arg(short='T',long,default_value_t=3,help="Weak key threshold")]
     weak_key_threshold: usize,
+    #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)",
+        requires="atls_overlap")]
+    atls: Option<NearCodewordSet>,
+    #[arg(short='l',long,help="Overlap parameter l in A_{t,l}(S)",requires="atls")]
+    atls_overlap: Option<usize>,
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
     #[arg(short,long,help="Max number of decoding failures recorded [default all]")]
@@ -56,6 +63,7 @@ struct Args {
 fn decoding_trial<R: Rng + ?Sized>(
     weak_key_filter: i8,
     weak_key_threshold: usize,
+    atls_params: Option<(NearCodewordSet, usize)>,
     rng: &mut R,
     threshold_cache: &mut ThresholdCache
 ) -> DecodingResult {
@@ -67,16 +75,20 @@ fn decoding_trial<R: Rng + ?Sized>(
         3 => Key::random_weak_type3(weak_key_threshold, rng),
         _ => panic!("Invalid value for weak key filter (must be -1, 0 (default), 1, 2, or 3)")
     };
-    let e_supp = SparseErrorVector::random(rng);
-    let mut syn = Syndrome::from_sparse(&key, &e_supp);
+    let tagged_error_vector = if let Some((sample_set, l)) = atls_params {
+        TaggedErrorVector::NearCodeword(ElementOfAtlS::random_from(&key, sample_set, l, rng))
+    } else {
+        TaggedErrorVector::Random(SparseErrorVector::random(rng))
+    };
+    let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.unpack());
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
-    DecodingResult { key, e_supp, success }
+    DecodingResult { key, e_supp: tagged_error_vector, success }
 }
 
 #[derive(Debug)]
 struct DecodingResult {
     key: Key,
-    e_supp: SparseErrorVector,
+    e_supp: TaggedErrorVector,
     success: bool
 }
 
@@ -102,6 +114,7 @@ fn trial_loop_async(
     number_of_trials: u64,
     weak_key_filter: i8,
     weak_key_threshold: usize,
+    atls: Option<(NearCodewordSet, usize)>,
     save_frequency: u64,
     tx: mpsc::Sender<DecoderMessage>
 ) {
@@ -111,7 +124,8 @@ fn trial_loop_async(
     let mut cache = ThresholdCache::with_parameters(r, d, t);
     let mut failure_count = 0;
     for i in 0..number_of_trials {
-        let result = decoding_trial(weak_key_filter, weak_key_threshold, &mut rng, &mut cache);
+        let result = decoding_trial(weak_key_filter, weak_key_threshold, atls,
+            &mut rng, &mut cache);
         if !result.success {
             failure_count += 1;
             let message = DecoderMessage::TrialResult(result);
@@ -141,7 +155,7 @@ fn trial_loop_async(
 fn build_json(
     failure_count: u64,
     number_of_trials: u64,
-    decoding_failures: &[(Key, SparseErrorVector)],
+    decoding_failures: &[(Key, TaggedErrorVector)],
     weak_key_filter: i8,
     weak_key_threshold: usize,
     runtime: Duration,
@@ -199,12 +213,15 @@ fn main() {
     let number_of_trials = args.number as u64;
     let weak_key_filter = args.weak_keys;
     let weak_key_threshold = if weak_key_filter == 0 { 0 } else { args.weak_key_threshold };
+    let atls = if let Some(atls_set) = args.atls {
+        Some((atls_set, args.atls_overlap.unwrap()))
+    } else { None };
     let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
     let record_max = args.recordmax.unwrap_or(args.number) as u64;
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(args.number) as u64);
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let mut failure_count = 0;
-    let mut decoding_failures: Vec<(Key, SparseErrorVector)> = Vec::new();
+    let mut decoding_failures: Vec<(Key, TaggedErrorVector)> = Vec::new();
     if args.verbose {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
         println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}",
@@ -234,8 +251,8 @@ fn main() {
             thread::spawn(move || {
                 let number_of_trials = trials_per_thread + if thread_id == 0
                     { trials_remainder } else { 0 };
-                trial_loop_async(thread_id, number_of_trials, weak_key_filter,
-                    weak_key_threshold, save_frequency, tx_clone);
+                trial_loop_async(thread_id, number_of_trials, weak_key_filter, weak_key_threshold,
+                    atls, save_frequency, tx_clone);
             });
         }
         // Track thread stats and how many threads are still in progress
@@ -291,7 +308,8 @@ fn main() {
         let mut rng = crate::random::get_rng();
         let mut cache = ThresholdCache::with_parameters(r, d, t);    
         for i in 0..number_of_trials {
-            let result = decoding_trial(weak_key_filter, weak_key_threshold, &mut rng, &mut cache);
+            let result = decoding_trial(weak_key_filter, weak_key_threshold, atls,
+                &mut rng, &mut cache);
             if !result.success {
                 failure_count += 1;
                 if failure_count <= record_max {

@@ -1,13 +1,15 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BatchSize};
 use bike_decoder::{
+    atls::{NearCodewordSet, ElementOfAtlS},
+    decoder,
     keys::Key,
+    random,
+    parameters::*,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
     threshold::{self, ThresholdCache},
-    random,
-    decoder,
-    parameters::*
 };
+use rand::Rng;
 
 pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("Key::random", |b| {
@@ -67,7 +69,23 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
         let mut rng = random::get_rng();
         let dist = Uniform::new(0, r);
-        b.iter(|| threshold::exact_threshold_ineq(dist.sample(&mut rng), r, d, t))
+        b.iter(|| black_box(threshold::exact_threshold_ineq(dist.sample(&mut rng), r, d, t)))
+    });
+    c.bench_function("atls", |b| {
+        b.iter_batched_ref(
+            || {
+                let mut rng = rand::thread_rng();
+                let key = Key::random(&mut rng);
+                let l = rng.gen_range(0..=BLOCK_WEIGHT);
+                (key, l, rng)
+            },
+            |inputs| black_box((
+                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::C, inputs.1, &mut inputs.2),
+                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::N, inputs.1, &mut inputs.2),
+                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::TwoN, inputs.1, &mut inputs.2),
+            )),
+            BatchSize::SmallInput
+        )
     });
 }
 
