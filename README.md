@@ -61,7 +61,7 @@ The program outputs the resulting data in JSON format (either to a file specifie
 
 Values for the `-N`, `-r`, and `-s` options can be given in scientific notation.
 
-The `--atls` (or `-S`) and `--atls-overlap` (or `-l`) options, if either is provided, must both be given. They cause the error vectors to instead be generated from the sets of near-codewords `A_{t,l}(S)` described in Vasseur's thesis.
+The `--atls` (or `-S`) option causes the error vectors to instead be generated from the sets of near-codewords `A_{t,l}(S)` described in Vasseur's thesis. The overlap `l` with the specified set `S` can be fixed with the `--atls-overlap` (or `-l`) parameter; if omitted, the overlap parameter will be chosen at random with each iteration.
 
 ## Example 
 

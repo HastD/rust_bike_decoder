@@ -10,6 +10,16 @@ pub enum NearCodewordSet {
     C, N, TwoN
 }
 
+impl fmt::Display for NearCodewordSet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::C => write!(f, "C"),
+            Self::N => write!(f, "N"),
+            Self::TwoN => write!(f, "2N"),
+        }
+    }
+}
+
 // Set up NearCodewordSet for use in command-line arguments
 impl clap::ValueEnum for NearCodewordSet {
     fn value_variants<'a>() -> &'a [Self] {
