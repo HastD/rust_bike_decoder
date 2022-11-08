@@ -13,3 +13,9 @@ pub const TANNER_GRAPH_EDGES: usize = ROW_WEIGHT*BLOCK_LENGTH;
 // Padding of certain arrays for optimal use of 256-bit AVX2 registers
 pub const SIZE_AVX: usize = ((((BLOCK_LENGTH*8) + (256*16 - 1)) / (256 * 16)) * (256 * 16)) / 8;
 pub const DOUBLE_SIZE_AVX: usize = 2*SIZE_AVX;
+
+// Compile-time assertions
+const _: () = assert!(BLOCK_WEIGHT < BLOCK_LENGTH);
+const _: () = assert!(ERROR_WEIGHT < BLOCK_LENGTH);
+const _: () = assert!(BLOCK_WEIGHT <= 509);
+const _: () = assert!(BF_THRESHOLD_MIN <= 255);

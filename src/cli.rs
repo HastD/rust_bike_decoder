@@ -49,6 +49,28 @@ pub struct Args {
     verbose: bool,
 }
 
+#[derive(Debug)]
+pub struct DecodingResult {
+    key: Key,
+    e_supp: TaggedErrorVector,
+    success: bool
+}
+
+#[derive(Copy,Clone,Debug,Serialize,Deserialize)]
+pub struct ThreadStats {
+    thread_id: u64,
+    failure_count: u64,
+    trials_completed: u64,
+    runtime: Duration,
+    done: bool
+}
+
+#[derive(Debug)]
+pub enum DecoderMessage {
+    TrialResult(DecodingResult),
+    Stats(ThreadStats)
+}
+
 pub fn decoding_trial<R: Rng + ?Sized>(
     weak_key_filter: i8,
     weak_key_threshold: usize,
@@ -75,28 +97,6 @@ pub fn decoding_trial<R: Rng + ?Sized>(
     let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.unpack());
     let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
     DecodingResult { key, e_supp: tagged_error_vector, success }
-}
-
-#[derive(Debug)]
-pub struct DecodingResult {
-    key: Key,
-    e_supp: TaggedErrorVector,
-    success: bool
-}
-
-#[derive(Copy,Clone,Debug,Serialize,Deserialize)]
-pub struct ThreadStats {
-    thread_id: u64,
-    failure_count: u64,
-    trials_completed: u64,
-    runtime: Duration,
-    done: bool
-}
-
-#[derive(Debug)]
-pub enum DecoderMessage {
-    TrialResult(DecodingResult),
-    Stats(ThreadStats)
 }
 
 // Runs decoding_trial in a loop, sending decoding failures (as they occur) and trial
@@ -268,8 +268,9 @@ pub fn run_cli(args: Args) -> Result<(), String> {
                     args.atls, args.atls_overlap, save_frequency, tx_clone);
             });
         }
+        // Drop original transmitter so rx will close when all threads finish
+        std::mem::drop(tx);
         // Track thread stats and how many threads are still in progress
-        let mut open_thread_count = thread_count;
         let mut thread_stats: HashMap<u64, ThreadStats> = HashMap::with_capacity(thread_count as usize);
         // Wait for messages
         for received in rx {
@@ -298,9 +299,6 @@ pub fn run_cli(args: Args) -> Result<(), String> {
                     let json_output = build_json(failure_count, total_trials, &decoding_failures,
                         weak_key_filter, weak_key_threshold, runtime, Some(json!(thread_stats)));
                     write_to_file_or_stdout(&args.output, &json_output);
-                    if stats.done {
-                        open_thread_count -= 1;
-                    }
                     if args.verbose {
                         println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                             failure_count, total_trials, runtime.as_secs_f64());
@@ -312,9 +310,6 @@ pub fn run_cli(args: Args) -> Result<(), String> {
                         }
                     }
                 }
-            }
-            if open_thread_count == 0 {
-                break; // all threads completed successfully, so wrap up
             }
         }
     } else { // synchronous decoding trial loop
