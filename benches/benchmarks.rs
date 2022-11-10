@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BatchSize};
 use bike_decoder::{
-    atls::{NearCodewordSet, ElementOfAtlS},
+    atls::{self, NearCodewordClass},
     decoder,
     keys::Key,
     random,
@@ -80,9 +80,9 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 (key, l, rng)
             },
             |inputs| black_box((
-                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::C, inputs.1, &mut inputs.2),
-                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::N, inputs.1, &mut inputs.2),
-                ElementOfAtlS::random_from(&inputs.0, NearCodewordSet::TwoN, inputs.1, &mut inputs.2),
+                atls::element_of_atls(&inputs.0, NearCodewordClass::C, inputs.1, &mut inputs.2),
+                atls::element_of_atls(&inputs.0, NearCodewordClass::N, inputs.1, &mut inputs.2),
+                atls::element_of_atls(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut inputs.2),
             )),
             BatchSize::SmallInput
         )

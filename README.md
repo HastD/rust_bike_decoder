@@ -30,6 +30,8 @@ Options:
           Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only) [default: 0]
   -T, --weak-key-threshold <WEAK_KEY_THRESHOLD>
           Weak key threshold [default: 3]
+      --fixed-key <FIXED_KEY>
+          Always use the specified key (in JSON format)
   -S, --atls <ATLS>
           Use error vectors from near-codeword set A_{t,l}(S) [possible values: C, N, 2N]
   -l, --atls-overlap <ATLS_OVERLAP>
@@ -37,7 +39,7 @@ Options:
   -o, --output <OUTPUT>
           Output file [default stdout]
   -r, --recordmax <RECORDMAX>
-          Max number of decoding failures recorded [default all]
+          Max number of decoding failures recorded [default: 10000]
   -s, --savefreq <SAVEFREQ>
           Save to disk frequency [default only at end]
       --threads <THREADS>

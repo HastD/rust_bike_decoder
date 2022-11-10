@@ -1,47 +1,21 @@
 use crate::parameters::*;
 use rand::{Rng, distributions::{Distribution, Uniform}};
 use serde::{Serialize, Deserialize};
-use std::cmp;
-use std::fmt;
+use std::{cmp, fmt};
+use thiserror::Error;
 
 pub type Index = u32;
 
 pub type SparseErrorVector = SparseVector<ERROR_WEIGHT, ROW_LENGTH>;
 pub type ErrorVector = DenseVector<ROW_LENGTH>;
 
-fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) {
-    // Find index to insert the element in order
-    let mut idx = 0;
-    while idx < max_i && array[idx] <= value {
-        idx += 1;
-    }
-    // Move larger elements to make space
-    let mut j = max_i;
-    while j > idx {
-        array[j] = array[j - 1];
-        j -= 1;
-    }
-    // Insert the element
-    array[idx] = value;
-}
+#[derive(Error, Debug)]
+pub struct InvalidSupport(String);
 
-fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
-    // Find index to insert the element in order
-    let mut idx = 0;
-    while idx < max_i && array[idx] <= value {
-        idx += 1;
-        // Element gets incremented so it's uniformly distributed
-        // over numbers not already in list
-        value += 1;
+impl fmt::Display for InvalidSupport {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid support for sparse vector: {}", self.0)
     }
-    // Move larger elements to make space
-    let mut j = max_i;
-    while j > idx {
-        array[j] = array[j - 1];
-        j -= 1;
-    }
-    // Insert the element
-    array[idx] = value;
 }
 
 // Sparse vector of fixed weight and length over GF(2)
@@ -52,13 +26,27 @@ pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
 );
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
-    pub fn from_support(supp: [Index; WEIGHT]) -> Self {
-        for i in 0..WEIGHT {
-            for j in (i+1)..WEIGHT {
-                assert_ne!(supp[i], supp[j], "Support indices must all be distinct");
+    // Ensure that the support represents a valid vector of the specified weight and length
+    pub fn validate(&self) -> Result<(), InvalidSupport> {
+        for idx in self.0 {
+            if idx >= self.length() {
+                return Err(InvalidSupport(format!("support indices must be in range 0..{}", LENGTH)));
             }
         }
-        Self(supp)
+        for i in 0..WEIGHT {
+            for j in (i+1)..WEIGHT {
+                if self.get(i) == self.get(j) {
+                    return Err(InvalidSupport(String::from("support indices must all be distinct")));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
+        let v = Self(supp);
+        v.validate()?;
+        Ok(v)
     }
 
     #[inline]
@@ -346,4 +334,39 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         let (left, right) = self.0.split_at_mut(length);
         right[..length].copy_from_slice(left);
     }
+}
+
+fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) {
+    // Find index to insert the element in order
+    let mut idx = 0;
+    while idx < max_i && array[idx] <= value {
+        idx += 1;
+    }
+    // Move larger elements to make space
+    let mut j = max_i;
+    while j > idx {
+        array[j] = array[j - 1];
+        j -= 1;
+    }
+    // Insert the element
+    array[idx] = value;
+}
+
+fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
+    // Find index to insert the element in order
+    let mut idx = 0;
+    while idx < max_i && array[idx] <= value {
+        idx += 1;
+        // Element gets incremented so it's uniformly distributed
+        // over numbers not already in list
+        value += 1;
+    }
+    // Move larger elements to make space
+    let mut j = max_i;
+    while j > idx {
+        array[j] = array[j - 1];
+        j -= 1;
+    }
+    // Insert the element
+    array[idx] = value;
 }

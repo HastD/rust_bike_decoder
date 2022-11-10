@@ -1,4 +1,4 @@
-use crate::vectors::{Index, SparseVector};
+use crate::vectors::{Index, SparseVector, InvalidSupport};
 use crate::parameters::*;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
@@ -40,14 +40,24 @@ impl Key {
         self.h1.support()
     }
 
+    #[inline]
     pub fn block_weight(&self) -> usize {
         self.h0.weight()
     }
 
+    #[inline]
     pub fn block_length(&self) -> Index {
         self.h0.length()
     }
 
+    #[inline]
+    pub fn validate(&self) -> Result<(), InvalidSupport> {
+        self.h0.validate()?;
+        self.h1.validate()?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
             h0: CyclicBlock::random(rng),
@@ -109,6 +119,6 @@ impl Key {
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{h0: [{}], h1: [{}]}}", self.h0(), self.h1())
+        write!(f, "{{h0: {}, h1: {}}}", self.h0(), self.h1())
     }
 }
