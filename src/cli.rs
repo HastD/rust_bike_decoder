@@ -236,7 +236,9 @@ fn build_json(
         "d": BLOCK_WEIGHT,
         "t": ERROR_WEIGHT,
         "iterations": NB_ITER,
-        "bgf_threshold": BGF_THRESHOLD,
+        "gray_threshold_diff": GRAY_THRESHOLD_DIFF,
+        "bf_threshold_min": BF_THRESHOLD_MIN,
+        "bf_masked_threshold": BF_MASKED_THRESHOLD,
         "weak_key_filter": weak_key_filter,
         "weak_key_threshold": weak_key_threshold,
         "fixed_key": fixed_key,
@@ -306,7 +308,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
     if args.verbose {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
         println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}",
-            r, d, t, NB_ITER, BGF_THRESHOLD);
+            r, d, t, NB_ITER, GRAY_THRESHOLD_DIFF);
         match weak_key_filter {
             -1 => {
                 println!("    Testing only non-weak keys (T = {})", weak_key_threshold);

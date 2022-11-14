@@ -68,7 +68,7 @@ pub fn bf_iter(
     thr: u8
 ) {
     let upc = unsatisfied_parity_checks(key, s);
-    let gray_thr = thr - BGF_THRESHOLD;
+    let gray_thr = thr - GRAY_THRESHOLD_DIFF;
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
             if upc[k][i] >= thr {
