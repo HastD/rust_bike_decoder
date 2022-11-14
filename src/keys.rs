@@ -13,11 +13,11 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn from(h0: CyclicBlock, h1: CyclicBlock) -> Self {
-        Self {
-            h0,
-            h1
-        }
+    pub fn from_support(h0_supp: [Index; BLOCK_WEIGHT], h1_supp: [Index; BLOCK_WEIGHT]) -> Result<Self, InvalidSupport> {
+        Ok(Self {
+            h0: CyclicBlock::from_support(h0_supp)?,
+            h1: CyclicBlock::from_support(h1_supp)?
+        })
     }
 
     #[inline]

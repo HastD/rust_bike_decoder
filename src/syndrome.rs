@@ -1,6 +1,7 @@
 use crate::parameters::*;
 use crate::vectors::{DenseVector, SparseErrorVector, ErrorVector};
 use crate::keys::Key;
+use std::fmt;
 
 // Note: syndromes are padded out to 2*SIZE_AVX so they can be passed to
 // code in decoder.rs that uses AVX2 instructions.
@@ -63,5 +64,15 @@ impl Syndrome {
                 self.flip((pos + j as usize) % BLOCK_LENGTH);
             }
         }
+    }
+}
+
+impl fmt::Display for Syndrome {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut str_vec = Vec::new();
+        for bit in self.contents()[..BLOCK_LENGTH].iter() {
+            str_vec.push(bit.to_string());
+        }
+        write!(f, "[{}]", str_vec.join(", "))
     }
 }

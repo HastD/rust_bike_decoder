@@ -17,7 +17,7 @@ pub fn bgf_decoder(
         let thr = threshold_cache.get(ws).expect("threshold should not be NaN");
         bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
         if iter_index == 0 {
-            let masked_thr = <u8>::try_from((BLOCK_WEIGHT + 1) / 2 + 1)
+            let masked_thr = <u8>::try_from(BF_MASKED_THRESHOLD)
                 .expect("Weight >= 509 not supported");
             bf_masked_iter(key, s, &mut e_out, black, masked_thr);
             bf_masked_iter(key, s, &mut e_out, gray, masked_thr);
