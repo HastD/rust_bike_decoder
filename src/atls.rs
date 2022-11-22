@@ -161,7 +161,7 @@ fn sample_n(key: &Key, block_flag: u8) -> Vec<Index>
     } else {
         let mut supp: Vec<Index> = Vec::with_capacity(BLOCK_WEIGHT);
         for &idx in key.h1().support() {
-            supp.push(idx + BLOCK_WEIGHT as Index);
+            supp.push(idx + BLOCK_LENGTH as Index);
         }
         supp
     }
