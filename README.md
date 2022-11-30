@@ -44,8 +44,8 @@ Options:
           Save to disk frequency [default only at end]
       --threads <THREADS>
           Number of threads [default: 1]
-  -v, --verbose
-          Print decoding failures as they are found
+  -v, --verbose...
+          Print statistics and/or decoding failures [repeat for more verbose, max 3]
   -h, --help
           Print help information
   -V, --version

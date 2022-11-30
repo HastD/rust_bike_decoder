@@ -39,7 +39,6 @@ pub struct Args {
     #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)")]
     atls: Option<NearCodewordClass>,
     #[arg(short='l',long,help="Overlap parameter l in A_{t,l}(S)",requires="atls")]
-        //value_parser=clap::value_parser!(usize).range(..=ERROR_WEIGHT))]
     atls_overlap: Option<usize>,
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
@@ -49,8 +48,9 @@ pub struct Args {
     savefreq: Option<f64>, // parsed as scientific notation to u64
     #[arg(long,default_value_t=1,help="Number of threads")]
     threads: u64,
-    #[arg(short,long,help="Print decoding failures as they are found")]
-    verbose: bool,
+    #[arg(short, long, action = clap::ArgAction::Count,
+        help="Print statistics and/or decoding failures [repeat for more verbose, max 3]")]
+    verbose: u8,
 }
 
 #[derive(Error, Debug)]
@@ -121,6 +121,7 @@ impl DecodingFailureRecord {
 pub struct ThreadStats {
     thread_id: u64,
     failure_count: u64,
+    cached_failure_count: u64,
     trials_completed: u64,
     runtime: Duration,
     done: bool
@@ -177,6 +178,7 @@ pub fn trial_loop_async(
     atls: Option<NearCodewordClass>,
     atls_overlap: Option<usize>,
     save_frequency: u64,
+    record_max: u64,
     tx: mpsc::Sender<DecoderMessage>
 ) {
     let start_time = Instant::now();
@@ -184,28 +186,39 @@ pub fn trial_loop_async(
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let mut cache = ThresholdCache::with_parameters(r, d, t);
     let mut failure_count = 0;
+    let mut cached_failure_count = 0;
     for i in 0..number_of_trials {
         let result = decoding_trial(weak_key_filter, weak_key_threshold, fixed_key, atls, atls_overlap,
             &mut rng, &mut cache);
         if !result.success {
             failure_count += 1;
-            let message = DecoderMessage::TrialResult(result);
-            tx.send(message).expect("Error transmitting decoding failure");
+            if failure_count <= record_max {
+                let message = DecoderMessage::TrialResult(result);
+                tx.send(message).expect("Error transmitting decoding failure");
+            } else {
+                // When many decoding failures are found, cache decoding failure counts.
+                // This prevents the main thread from being flooded with messages,
+                // which can be a bottleneck in cases with a very high decoding failure rate.
+                cached_failure_count += 1;
+            }
         }
         if i != 0 && i % save_frequency == 0 {
             let message = DecoderMessage::Stats(ThreadStats {
                 thread_id,
                 failure_count,
+                cached_failure_count,
                 trials_completed: i,
                 runtime: start_time.elapsed(),
                 done: false
             });
             tx.send(message).expect("Error transmitting thread stats");
+            cached_failure_count = 0;
         }
     }
     let message = DecoderMessage::Stats(ThreadStats {
         thread_id,
         failure_count,
+        cached_failure_count,
         trials_completed: number_of_trials,
         runtime: start_time.elapsed(),
         done: true
@@ -305,7 +318,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
     let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
     let mut failure_count = 0;
     let mut decoding_failures: Vec<DecodingFailureRecord> = Vec::new();
-    if args.verbose {
+    if args.verbose >= 1 {
         println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
         println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}",
             r, d, t, NB_ITER, GRAY_THRESHOLD_DIFF);
@@ -344,7 +357,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
                 let number_of_trials = trials_per_thread + if thread_id == 0
                     { trials_remainder } else { 0 };
                 trial_loop_async(thread_id, number_of_trials, weak_key_filter, weak_key_threshold,
-                    fixed_key_clone.as_ref(), args.atls, args.atls_overlap, save_frequency, tx_clone);
+                    fixed_key_clone.as_ref(), args.atls, args.atls_overlap, save_frequency, record_max, tx_clone);
             });
         }
         // Drop original transmitter so rx will close when all threads finish
@@ -359,7 +372,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
                     if !result.success {
                         failure_count += 1;
                         if failure_count <= record_max {
-                            if args.verbose {
+                            if args.verbose >= 3 {
                                 println!("Decoding failure found!");
                                 println!("Key: {}\nError vector: {}", result.key, result.vector);
                                 if failure_count == record_max {
@@ -372,6 +385,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
                 }
                 // If we receive updated thread statistics, record and save those
                 DecoderMessage::Stats(stats) => {
+                    failure_count += stats.cached_failure_count;
                     thread_stats.insert(stats.thread_id, stats);
                     let total_trials = thread_stats.values().map(|st| st.trials_completed).sum();
                     let runtime = start_time.elapsed();
@@ -379,7 +393,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
                         weak_key_filter, weak_key_threshold, fixed_key.as_ref(), runtime,
                         Some(json!(thread_stats)));
                     write_to_file_or_stdout(&args.output, &json_output);
-                    if args.verbose {
+                    if args.verbose >= 2 {
                         println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                             failure_count, total_trials, runtime.as_secs_f64());
                         if stats.done {
@@ -401,7 +415,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
             if !result.success {
                 failure_count += 1;
                 if failure_count <= record_max {
-                    if args.verbose {
+                    if args.verbose >= 3 {
                         println!("Decoding failure found!");
                         println!("Key: {}\nError vector: {}", result.key, result.vector);
                         if failure_count == record_max {
@@ -416,7 +430,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
                 let json_output = build_json(failure_count, i, &decoding_failures, weak_key_filter,
                     weak_key_threshold, fixed_key.as_ref(), runtime, None);
                 write_to_file_or_stdout(&args.output, &json_output);
-                if args.verbose {
+                if args.verbose >= 2 {
                     println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                         failure_count, i, runtime.as_secs_f64());
                 }
@@ -428,7 +442,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
             weak_key_filter, weak_key_threshold, fixed_key.as_ref(), runtime, None);
         write_to_file_or_stdout(&args.output, &json_output);
     }
-    if args.verbose {
+    if args.verbose >= 1 {
         print_end_message(failure_count, number_of_trials, start_time.elapsed());
     }
     Ok(())
