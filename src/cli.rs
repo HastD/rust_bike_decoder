@@ -28,7 +28,7 @@ use thiserror::Error;
 pub struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
     number: f64, // parsed as scientific notation to u64
-    #[arg(short,long,default_value_t=0,
+    #[arg(short, long, default_value_t=0, value_parser=clap::value_parser!(i8).range(-1..=3),
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
     weak_keys: i8,
     #[arg(short='T',long,default_value_t=3,requires="weak_keys",help="Weak key threshold")]
@@ -156,8 +156,7 @@ pub fn decoding_trial<R: Rng + ?Sized>(
         }
     };
     let tagged_error_vector = if let Some(sample_class) = atls {
-        let l_max = sample_class.max_l();
-        let l = atls_overlap.unwrap_or(rng.gen_range(0..=l_max));
+        let l = atls_overlap.unwrap_or_else(|| rng.gen_range(0 ..= sample_class.max_l()));
         atls::element_of_atls(&key, sample_class, l, rng)
     } else {
         TaggedErrorVector::from_random(SparseErrorVector::random(rng))
@@ -267,23 +266,25 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
     };
 }
 
-fn print_end_message(failure_count: u64, number_of_trials: u64, runtime: Duration) {
-    println!("Trials: {}", number_of_trials);
-    println!("Decoding failures: {}", failure_count);
+fn end_message(failure_count: u64, number_of_trials: u64, runtime: Duration) -> String {
     let dfr = failure_count as f64 / number_of_trials as f64;
-    println!("log2(DFR): {:.2}", dfr.log2());
-    println!("Runtime: {:.3} s", runtime.as_secs_f64());
     let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
     let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
-    if avg_mcs >= 100 {
-        println!("Average: {} μs", avg_mcs);
+    let avg_text = if avg_mcs >= 100 {
+        format!("{} μs", avg_mcs)
     } else if avg_mcs >= 10 {
-        println!("Average: {}.{} μs", avg_mcs, ns_rem / 100);
+        format!("{}.{} μs", avg_mcs, ns_rem / 100)
     } else if avg_mcs >= 1 {
-        println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem / 10, width=2);
+        format!("{}.{:0width$} μs", avg_mcs, ns_rem / 10, width=2)
     } else {
-        println!("Average: {}.{:0width$} μs", avg_mcs, ns_rem, width=3);
-    }
+        format!("{}.{:0width$} μs", avg_mcs, ns_rem, width=3)
+    };
+    format!("Trials: {}\n\
+        Decoding failures: {}\n\
+        log2(DFR): {:.2}\n\
+        Runtime: {:.3} s\n\
+        Average: {}",
+        number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
 pub fn run_cli(args: Args) -> Result<(), UserInputError> {
@@ -435,7 +436,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
         write_to_file_or_stdout(&args.output, &json_output);
     }
     if args.verbose >= 1 {
-        print_end_message(failure_count, number_of_trials, start_time.elapsed());
+        println!("{}", end_message(failure_count, number_of_trials, start_time.elapsed()));
     }
     Ok(())
 }
