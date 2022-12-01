@@ -122,3 +122,49 @@ impl fmt::Display for Key {
         write!(f, "{{h0: {}, h1: {}}}", self.h0(), self.h1())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const TRIALS: usize = 100;
+
+    #[test]
+    fn non_weak_keys() {
+        let mut rng = rand::thread_rng();
+        let weak_key_threshold = 3;
+        for _ in 0..TRIALS {
+            let key = Key::random_non_weak(weak_key_threshold, &mut rng);
+            assert!(!key.is_weak(weak_key_threshold), "Non-weak key was actually weak: {:?}", key);
+        }
+    }
+
+    #[test]
+    fn weak_keys_type1() {
+        let mut rng = rand::thread_rng();
+        let weak_key_threshold = 5;
+        for _ in 0 .. TRIALS {
+            let key = Key::random_weak_type1(weak_key_threshold, &mut rng);
+            assert!(key.is_weak(weak_key_threshold), "Type 1 weak key was not actually weak: {:?}", key);
+        }
+    }
+
+    #[test]
+    fn weak_keys_type2() {
+        let mut rng = rand::thread_rng();
+        let weak_key_threshold = 5;
+        for _ in 0 .. TRIALS {
+            let key = Key::random_weak_type2(weak_key_threshold, &mut rng);
+            assert!(key.is_weak(weak_key_threshold), "Type 2 weak key was not actually weak: {:?}", key);
+        }
+    }
+
+    #[test]
+    fn weak_keys_type3() {
+        let mut rng = rand::thread_rng();
+        let weak_key_threshold = 5;
+        for _ in 0 .. TRIALS {
+            let key = Key::random_weak_type3(weak_key_threshold, &mut rng);
+            assert!(key.is_weak(weak_key_threshold), "Type 3 weak key was not actually weak: {:?}", key);
+        }
+    }
+}

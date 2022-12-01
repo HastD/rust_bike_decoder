@@ -168,8 +168,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         // Generate entries that overlap after a shift
         for j in 0..thresh {
             let rand = rng.gen_range(0..r-j as Index);
-            insert_sorted_inc(&mut h0, rand, j);
-            insert_sorted_noinc(&mut h1, (rand + shift) % r, j);
+            let value = insert_sorted_inc(&mut h0, rand, j);
+            insert_sorted_noinc(&mut h1, (value + shift) % r, j);
         }
         // Generate other entries
         for j in thresh..WEIGHT {
@@ -296,7 +296,7 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     }
 
     #[inline]
-    pub fn contents(&self) -> &[u8; LENGTH] {
+    pub fn contents(&self) -> &[u8] {
         &self.0
     }
 
@@ -336,7 +336,7 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     }
 }
 
-fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) {
+fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) -> T {
     // Find index to insert the element in order
     let mut idx = 0;
     while idx < max_i && array[idx] <= value {
@@ -350,9 +350,10 @@ fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) {
     }
     // Insert the element
     array[idx] = value;
+    value
 }
 
-fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
+fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) -> Index {
     // Find index to insert the element in order
     let mut idx = 0;
     while idx < max_i && array[idx] <= value {
@@ -369,4 +370,51 @@ fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) {
     }
     // Insert the element
     array[idx] = value;
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TRIALS: usize = 100;
+
+    #[test]
+    fn validate_random() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..TRIALS {
+            let v = SparseVector::<ERROR_WEIGHT, BLOCK_LENGTH>::random(&mut rng);
+            v.validate().expect("Random vector should have all entries distinct and in the proper range.");
+        }
+    }
+    #[test]
+    fn weak_type1() {
+        let mut rng = rand::thread_rng();
+        let thresh = 5;
+        for _ in 0..TRIALS {
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type1(thresh, &mut rng);
+            assert!(v.shifts_above_threshold(thresh), "Type 1 weak block was not actually weak of type 1/2: {:?}", v);
+        }
+    }
+
+    #[test]
+    fn weak_type2() {
+        let mut rng = rand::thread_rng();
+        let thresh = 5;
+        for _ in 0..TRIALS {
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type2(thresh, &mut rng);
+            assert!(v.shifts_above_threshold(thresh), "Type 2 weak block was not actually weak of type 1/2: {:?}", v);
+        }
+    }
+
+    #[test]
+    fn weak_type3() {
+        let mut rng = rand::thread_rng();
+        let thresh = 5;
+        for _ in 0..TRIALS {
+            let (v1, v2) = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type3(thresh, &mut rng);
+            assert!(v1.max_shifted_product_weight_geq(&v2, thresh),
+                "Pair of type 3 weak blocks was not actually weak of type 3: {:?}", (v1, v2));
+        }
+    }
 }
