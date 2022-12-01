@@ -10,6 +10,16 @@ pub enum NearCodewordClass {
     C, N, TwoN
 }
 
+impl NearCodewordClass {
+    pub fn max_l(&self) -> usize {
+        match self {
+            Self::C => ERROR_WEIGHT,
+            Self::N => BLOCK_WEIGHT,
+            Self::TwoN => ERROR_WEIGHT,
+        }
+    }
+}
+
 impl fmt::Display for NearCodewordClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

@@ -155,10 +155,10 @@ pub fn decoding_trial<R: Rng + ?Sized>(
             _ => panic!("Invalid value for weak key filter (must be -1, 0 (default), 1, 2, or 3)")
         }
     };
-    let tagged_error_vector = if let Some(sample_set) = atls {
-        let l_max = max_l(sample_set);
+    let tagged_error_vector = if let Some(sample_class) = atls {
+        let l_max = sample_class.max_l();
         let l = atls_overlap.unwrap_or(rng.gen_range(0..=l_max));
-        atls::element_of_atls(&key, sample_set, l, rng)
+        atls::element_of_atls(&key, sample_class, l, rng)
     } else {
         TaggedErrorVector::from_random(SparseErrorVector::random(rng))
     };
@@ -224,14 +224,6 @@ pub fn trial_loop_async(
         done: true
     });
     tx.send(message).expect("Error transmitting thread stats");
-}
-
-fn max_l(sample_set: NearCodewordClass) -> usize {
-    match sample_set {
-        NearCodewordClass::C => ERROR_WEIGHT,
-        NearCodewordClass::N => BLOCK_WEIGHT,
-        NearCodewordClass::TwoN => ERROR_WEIGHT,
-    }
 }
 
 fn build_json(
@@ -306,10 +298,10 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
     } else { None };
     if let Some(l) = args.atls_overlap {
         // unwrap() is safe here because atls_overlap requires atls when arguments are parsed
-        let sample_set = args.atls.unwrap();
-        let l_max = max_l(sample_set);
+        let sample_class = args.atls.unwrap();
+        let l_max = sample_class.max_l();
         if l > l_max {
-            return Err(UserInputError::RangeError(format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_set)));
+            return Err(UserInputError::RangeError(format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_class)));
         }
     }
     let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
