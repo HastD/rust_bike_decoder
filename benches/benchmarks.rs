@@ -32,6 +32,18 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
             BatchSize::SmallInput
         )
     });
+    c.bench_function("weight", |b| {
+        let mut rng = random::get_rng();
+        b.iter_batched_ref(
+            || {
+                let key = Key::random(&mut rng);
+                let e_supp = SparseErrorVector::random(&mut rng);
+                Syndrome::from_sparse(&key, &e_supp)
+            },
+            |syn| black_box(syn.hamming_weight()),
+            BatchSize::SmallInput
+        )
+    });
     c.bench_function("bgf_decoder", |b| {
         let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
         let mut rng = random::get_rng();
@@ -68,8 +80,8 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         use rand::distributions::{Distribution, Uniform};
         let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
         let mut rng = random::get_rng();
-        let dist = Uniform::new(0, r);
-        b.iter(|| black_box(threshold::exact_threshold_ineq(dist.sample(&mut rng), r, d, t)))
+        let ws_dist = Uniform::new(0, r);
+        b.iter(|| black_box(threshold::exact_threshold_ineq(ws_dist.sample(&mut rng), r, d, t)))
     });
     c.bench_function("atls", |b| {
         b.iter_batched_ref(
