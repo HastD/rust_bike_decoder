@@ -334,6 +334,14 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         let (left, right) = self.0.split_at_mut(length);
         right[..length].copy_from_slice(left);
     }
+
+    pub fn add_mod2(self, other: Self) -> Self {
+        let mut v = [0; LENGTH];
+        for i in 0..LENGTH {
+            v[i] = self.get(i) ^ other.get(i);
+        }
+        Self::from(v)
+    }
 }
 
 fn insert_sorted_noinc<T: Ord + Copy>(array: &mut [T], value: T, max_i: usize) -> T {

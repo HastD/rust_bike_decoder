@@ -41,8 +41,8 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SI
     ))]
     {
         if std::arch::is_x86_feature_detected!("avx2") {
-            multiply_avx2(&mut upc[0], h_supp[0], s.contents(), BLOCK_WEIGHT, SIZE_AVX);
-            multiply_avx2(&mut upc[1], h_supp[1], s.contents(), BLOCK_WEIGHT, SIZE_AVX);
+            multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
+            multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
             return upc;
         }
     }
@@ -143,6 +143,26 @@ fn multiply_avx2(
             // copy buffer contents to appropriate address in output vector
             let output_slice = &mut output[32*(i+k)..32*(i+k)+32];
             output_slice.copy_from_slice(&<[u8; 32]>::from(buffer[k]));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TRIALS: usize = 1000;
+
+    #[test]
+    fn upc_all_ones() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..TRIALS {
+            let key = Key::random(&mut rng);
+            let mut syn = Syndrome::from([1; BLOCK_LENGTH]);
+            let upc = unsatisfied_parity_checks(&key, &mut syn);
+            for k in 0..2 {
+                assert_eq!(&upc[k][..BLOCK_LENGTH], &[15; BLOCK_LENGTH]);
+            }
         }
     }
 }
