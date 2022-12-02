@@ -17,10 +17,8 @@ pub fn bgf_decoder(
         let thr = threshold_cache.get(ws).expect("threshold should not be NaN");
         bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
         if iter_index == 0 {
-            let masked_thr = <u8>::try_from(BF_MASKED_THRESHOLD)
-                .expect("Weight >= 509 not supported");
-            bf_masked_iter(key, s, &mut e_out, black, masked_thr);
-            bf_masked_iter(key, s, &mut e_out, gray, masked_thr);
+            bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);
+            bf_masked_iter(key, s, &mut e_out, gray, BF_MASKED_THRESHOLD);
         }
         ws = s.hamming_weight();
         if ws == 0 {
@@ -30,11 +28,14 @@ pub fn bgf_decoder(
     (e_out, ws == 0)
 }
 
-pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SIZE_AVX]; 2] {
+pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LENGTH]; 2] {
     // Duplicate the syndrome to precompute cyclic shifts and avoid modulo operations
     s.duplicate_up_to(BLOCK_LENGTH);
     let h_supp = [key.h0().support(), key.h1().support()];
     let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
+    fn truncate_buffer(buf: [u8; DOUBLE_SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
+        *<&[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
+    }
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "avx2"
@@ -43,7 +44,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SI
         if std::arch::is_x86_feature_detected!("avx2") {
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
             multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
-            return upc;
+            return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
         }
     }
     for k in 0..2 {
@@ -54,7 +55,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; DOUBLE_SI
             }
         }
     }
-    upc
+    [truncate_buffer(upc[0]), truncate_buffer(upc[1])]
 }
 
 // for some reason allowing the compiler to inline this function slows things down a lot
@@ -99,9 +100,6 @@ pub fn bf_masked_iter(
         }
     }
 }
-
-
-// Here be dragons...
 
 // Adapted from Valentin Vasseur's QC-MDPC decoder implementation
 // Multiplies a sparse vector of the given weight by a dense vector of the given length.

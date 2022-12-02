@@ -4,9 +4,9 @@ pub const ERROR_WEIGHT: usize = 18;
 pub const NB_ITER: usize = 7;
 pub const GRAY_THRESHOLD_DIFF: u8 = 3;
 // threshold function takes max(threshold, BF_THRESHOLD_MIN)
-pub const BF_THRESHOLD_MIN: usize = (BLOCK_WEIGHT + 1) / 2;
+pub const BF_THRESHOLD_MIN: u8 = (BLOCK_WEIGHT as u8 + 1) / 2;
 // This is the threshold used in bf_masked_iter in the black/gray step
-pub const BF_MASKED_THRESHOLD: usize = (BLOCK_WEIGHT + 1) / 2 + 1;
+pub const BF_MASKED_THRESHOLD: u8 = (BLOCK_WEIGHT as u8 + 1) / 2 + 1;
 
 // computed constants, don't change these
 pub const ROW_LENGTH: usize = 2*BLOCK_LENGTH;
@@ -20,4 +20,3 @@ pub const DOUBLE_SIZE_AVX: usize = 2*SIZE_AVX;
 const _: () = assert!(BLOCK_WEIGHT < BLOCK_LENGTH);
 const _: () = assert!(ERROR_WEIGHT < BLOCK_LENGTH);
 const _: () = assert!(BLOCK_WEIGHT <= 509);
-const _: () = assert!(BF_THRESHOLD_MIN <= 255);

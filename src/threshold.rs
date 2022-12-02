@@ -4,11 +4,11 @@ use num_integer::binomial;
 use rustc_hash::FxHashMap;
 use std::cmp;
 
-fn big_binomial(n: u32, k: u32) -> BigInt {
+fn big_binomial(n: usize, k: usize) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
 }
 
-fn compute_x(r: u32, d: u32, t: u32) -> f64 {
+fn compute_x(r: usize, d: usize, t: usize) -> f64 {
     let n = 2*r;
     let w = 2*d;
     let n_minus_w = n - w;
@@ -20,7 +20,7 @@ fn compute_x(r: u32, d: u32, t: u32) -> f64 {
     x.expect("Threshold computation should not overflow")
 }
 
-fn threshold_constants(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -> (f64, f64) {
+fn threshold_constants(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>) -> (f64, f64) {
     let n = 2*r;
     let w = 2*d;
     let x = x.unwrap_or_else(|| compute_x(r, d, t));
@@ -29,10 +29,11 @@ fn threshold_constants(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -> (f6
     (pi0, pi1)
 }
 
-pub fn exact_threshold_ineq(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -> Option<u8> {
-    let bf_threshold_min = <u8>::try_from(BF_THRESHOLD_MIN).expect("Weight >= 509 not supported");
+pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>) -> Result<u8, &'static str> {
     if ws == 0 {
-        return Some(bf_threshold_min);
+        return Ok(BF_THRESHOLD_MIN);
+    } else if ws > r as usize {
+        return Err("Syndrome weight cannot be greater than block length");
     }
     let n = 2*r;
     let (pi0, pi1) = threshold_constants(ws, r, d, t, x);
@@ -43,16 +44,18 @@ pub fn exact_threshold_ineq(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -
         if threshold < u8::MAX as i32 {
             threshold = threshold.wrapping_add(1);
         } else {
-            return None;
+            return Err("Threshold exceeds maximum supported value");
         }
     }
-    let threshold = cmp::max(threshold as u8, bf_threshold_min);
-    Some(threshold)
+    let threshold = cmp::max(threshold as u8, BF_THRESHOLD_MIN);
+    Ok(threshold)
 }
 
-pub fn exact_threshold(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -> Option<u8> {
+pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>) -> Result<u8, &'static str> {
     if ws == 0 {
-        return Some(1);
+        return Ok(BF_THRESHOLD_MIN);
+    } else if ws > r as usize {
+        return Err("Syndrome weight cannot be greater than block length");
     }
     let n = 2*r;
     let (pi0, pi1) = threshold_constants(ws, r, d, t, x);
@@ -61,26 +64,27 @@ pub fn exact_threshold(ws: usize, r: u32, d: u32, t: u32, x: Option<f64>) -> Opt
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
-    if threshold.is_nan() { None } else {
-        let threshold = <u8>::try_from(threshold as u32).expect("Thresholds >= 256 not supported");
-        let bf_threshold_min = <u8>::try_from(BF_THRESHOLD_MIN).expect("Weight >= 509 not supported");
+    if threshold.is_nan() { Err("Invalid threshold (NaN) computed") } else {
+        let threshold = <u8>::try_from(threshold as u32)
+            .or(Err("Threshold exceeds maximum supported value"))?;
         // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
-        let threshold = cmp::max(threshold, bf_threshold_min);
-        Some(threshold)
+        let threshold = cmp::max(threshold, BF_THRESHOLD_MIN);
+        Ok(threshold)
     }
 }
 
 #[derive(Debug)]
 pub struct ThresholdCache {
-    cache: FxHashMap<usize, Option<u8>>,
-    pub r: u32,
-    pub d: u32,
-    pub t: u32,
+    cache: FxHashMap<usize, Result<u8, &'static str>>,
+    pub r: usize,
+    pub d: usize,
+    pub t: usize,
     x: Option<f64>,
 }
 
 impl ThresholdCache {
-    pub fn with_parameters(r: u32, d: u32, t: u32) -> Self {
+    pub fn with_parameters(r: usize, d: usize, t: usize) -> Self {
+        assert!(d < r && t < 2*r);
         Self {
             cache: FxHashMap::default(),
             r, d, t,
@@ -88,7 +92,7 @@ impl ThresholdCache {
         }
     }
 
-    pub fn get(&mut self, ws: usize) -> Option<u8> {
+    pub fn get(&mut self, ws: usize) -> Result<u8, &'static str> {
         self.x.get_or_insert_with(|| compute_x(self.r, self.d, self.t));
         *self.cache.entry(ws).or_insert_with(|| exact_threshold_ineq(ws, self.r, self.d, self.t, self.x))
     }
@@ -97,16 +101,25 @@ impl ThresholdCache {
         self.cache.contains_key(ws)
     }
 
-    pub fn precompute_all(&mut self) {
-        for ws in 0..self.r as usize {
-            self.get(ws);
+    pub fn precompute_all(&mut self) -> Result<(), &'static str> {
+        for ws in 0..self.r {
+            self.get(ws)?;
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retrieve_cached() {
+        let (r, d, t) = (587, 15, 18);
+        let mut cache = ThresholdCache::with_parameters(r, d, t);
+        cache.cache.insert(42, Ok(127));
+        assert_eq!(cache.get(42).unwrap(), 127);
+    }
 
     #[test]
     fn known_x() {
@@ -119,7 +132,6 @@ mod tests {
     #[test]
     fn known_thresholds() {
         let (r, d, t) = (587, 15, 18);
-        let bf_threshold_min = <u8>::try_from(BF_THRESHOLD_MIN).unwrap();
         let thresholds_no_min = [
             1,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,
             6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
@@ -140,7 +152,14 @@ mod tests {
         let mut cache = ThresholdCache::with_parameters(r, d, t);
         for ws in 0..r as usize {
             let thresh = cache.get(ws).unwrap();
-            assert_eq!(thresh, cmp::max(thresholds_no_min[ws as usize], bf_threshold_min));
+            assert_eq!(thresh, cmp::max(thresholds_no_min[ws as usize], BF_THRESHOLD_MIN));
         }
+    }
+
+    #[test]
+    fn invalid_threshold() {
+        let (r, d, t) = (587, 15, 18);
+        let mut cache = ThresholdCache::with_parameters(r, d, t);
+        assert!(cache.get(600).is_err());
     }
 }

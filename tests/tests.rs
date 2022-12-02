@@ -42,7 +42,7 @@ fn syndrome_e_out_consistent() {
         let mut gray = [[false; BLOCK_LENGTH]; 2];
         decoder::bf_iter(&key, &mut s, &mut e_out, &mut black, &mut gray, BF_THRESHOLD_MIN as u8);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
-        decoder::bf_masked_iter(&key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD as u8);
+        decoder::bf_masked_iter(&key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
     }
 }

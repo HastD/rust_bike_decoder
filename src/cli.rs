@@ -182,8 +182,7 @@ pub fn trial_loop_async(
 ) {
     let start_time = Instant::now();
     let mut rng = crate::random::get_rng();
-    let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
-    let mut cache = ThresholdCache::with_parameters(r, d, t);
+    let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let mut failure_count = 0;
     let mut cached_failure_count = 0;
     for i in 0..number_of_trials {
@@ -308,7 +307,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
     let thread_count = cmp::min(cmp::max(args.threads, 1), 1024);
     let record_max = args.recordmax as u64;
     let save_frequency = cmp::max(10000, args.savefreq.unwrap_or(args.number) as u64);
-    let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
+    let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let mut failure_count = 0;
     let mut decoding_failures: Vec<DecodingFailureRecord> = Vec::new();
     if args.verbose >= 1 {
