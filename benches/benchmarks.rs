@@ -77,11 +77,8 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("threshold", |b| {
-        use rand::distributions::{Distribution, Uniform};
         let (r, d, t) = (BLOCK_LENGTH as u32, BLOCK_WEIGHT as u32, ERROR_WEIGHT as u32);
-        let mut rng = random::get_rng();
-        let ws_dist = Uniform::new(0, r);
-        b.iter(|| black_box(threshold::exact_threshold_ineq(ws_dist.sample(&mut rng), r, d, t)))
+        b.iter(|| black_box(threshold::ThresholdCache::with_parameters(r, d, t).precompute_all()))
     });
     c.bench_function("atls", |b| {
         b.iter_batched_ref(

@@ -377,7 +377,7 @@ fn insert_sorted_inc(array: &mut [Index], mut value: Index, max_i: usize) -> Ind
 mod tests {
     use super::*;
 
-    const TRIALS: usize = 100;
+    const TRIALS: usize = 1000;
 
     #[test]
     fn validate_random() {
@@ -387,6 +387,19 @@ mod tests {
             v.validate().expect("Random vector should have all entries distinct and in the proper range.");
         }
     }
+
+    // Checks that the support of the associated dense vector is equal to the original sparse vector
+    #[test]
+    fn dense_support() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..TRIALS {
+            let sparse = SparseVector::<ERROR_WEIGHT, BLOCK_LENGTH>::random(&mut rng);
+            let mut sorted_supp = sparse.0;
+            sorted_supp.sort();
+            assert_eq!(sorted_supp.to_vec(), sparse.dense().support());
+        }
+    }
+
     #[test]
     fn weak_type1() {
         let mut rng = rand::thread_rng();

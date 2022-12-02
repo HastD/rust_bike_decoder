@@ -26,6 +26,9 @@ thiserror = "1.0"
 inherits = "release"
 debug = true
 
+[profile.test]
+opt-level = 1
+
 [dev-dependencies]
 criterion = "0.4"
 

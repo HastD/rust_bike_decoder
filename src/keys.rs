@@ -126,7 +126,7 @@ impl fmt::Display for Key {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const TRIALS: usize = 100;
+    const TRIALS: usize = 1000;
 
     #[test]
     fn non_weak_keys() {
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn weak_keys_type1() {
         let mut rng = rand::thread_rng();
-        let weak_key_threshold = 5;
+        let weak_key_threshold = 7;
         for _ in 0 .. TRIALS {
             let key = Key::random_weak_type1(weak_key_threshold, &mut rng);
             assert!(key.is_weak(weak_key_threshold), "Type 1 weak key was not actually weak: {:?}", key);
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn weak_keys_type2() {
         let mut rng = rand::thread_rng();
-        let weak_key_threshold = 5;
+        let weak_key_threshold = 7;
         for _ in 0 .. TRIALS {
             let key = Key::random_weak_type2(weak_key_threshold, &mut rng);
             assert!(key.is_weak(weak_key_threshold), "Type 2 weak key was not actually weak: {:?}", key);
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn weak_keys_type3() {
         let mut rng = rand::thread_rng();
-        let weak_key_threshold = 5;
+        let weak_key_threshold = 7;
         for _ in 0 .. TRIALS {
             let key = Key::random_weak_type3(weak_key_threshold, &mut rng);
             assert!(key.is_weak(weak_key_threshold), "Type 3 weak key was not actually weak: {:?}", key);

@@ -9,7 +9,7 @@ use std::fmt;
 pub type Syndrome = DenseVector<DOUBLE_SIZE_AVX>;
 
 impl Syndrome {
-    pub fn hamming_weight(&self) -> u32 {
+    pub fn hamming_weight(&self) -> usize {
         let mut wt = 0;
         for i in 0..BLOCK_LENGTH {
             if self.get(i) == 1 {
@@ -74,5 +74,20 @@ impl fmt::Display for Syndrome {
             str_vec.push(bit.to_string());
         }
         write!(f, "[{}]", str_vec.join(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn syndrome_weight() {
+        let mut syn = Syndrome::zero();
+        let supp = [2, 3, 5, 7, 11, 13, 17, 19, BLOCK_LENGTH, BLOCK_LENGTH + 4];
+        for idx in supp {
+            syn.flip(idx);
+        }
+        assert_eq!(syn.hamming_weight(), supp.len() - 2);
     }
 }

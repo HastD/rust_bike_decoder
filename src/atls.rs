@@ -202,3 +202,15 @@ pub fn shift_blockwise(supp: &mut [Index], shift: Index, block_length: Index) {
         *idx = ((*idx + shift) % block_length) + (*idx / block_length) * block_length;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blockwise_shift() {
+        let mut supp = [2, 3, 5, 7, 11, 13, 17, 19];
+        shift_blockwise(&mut supp, 4, 7);
+        assert_eq!(supp, [6, 0, 2, 11, 8, 10, 14, 16]);
+    }
+}
