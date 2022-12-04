@@ -32,21 +32,22 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     // Duplicate the syndrome to precompute cyclic shifts and avoid modulo operations
     s.duplicate_up_to(BLOCK_LENGTH);
     let h_supp = [key.h0().support(), key.h1().support()];
-    let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
-    fn truncate_buffer(buf: [u8; DOUBLE_SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
-        *<&[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
-    }
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "avx2"
     ))]
     {
         if std::arch::is_x86_feature_detected!("avx2") {
+            fn truncate_buffer(buf: [u8; DOUBLE_SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
+                *<&[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
+            }
+            let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
             multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
         }
     }
+    let mut upc = [[0u8; BLOCK_LENGTH]; 2];
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
             for &j in h_supp[k] {
@@ -55,7 +56,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
             }
         }
     }
-    [truncate_buffer(upc[0]), truncate_buffer(upc[1])]
+    upc
 }
 
 // for some reason allowing the compiler to inline this function slows things down a lot

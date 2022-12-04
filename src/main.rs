@@ -13,10 +13,7 @@ pub mod vectors;
 
 use clap::Parser;
 
-fn main() {
+fn main() -> Result<(), cli::UserInputError> {
     let args = cli::Args::parse();
-    if let Err(message) = cli::run_cli(args) {
-        eprintln!("Usage error: {}", message);
-        std::process::exit(2);
-    }
+    cli::run_cli(args)
 }

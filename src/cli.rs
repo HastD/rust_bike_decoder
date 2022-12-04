@@ -161,9 +161,17 @@ pub fn decoding_trial<R: Rng + ?Sized>(
     } else {
         TaggedErrorVector::from_random(SparseErrorVector::random(rng))
     };
+    let e_supp = tagged_error_vector.vector();
+    let e_in = e_supp.dense();
     let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.vector());
-    let (_e_out, success) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
-    DecodingResult { key, vector: tagged_error_vector, success }
+    let (e_out, same_syndrome) = decoder::bgf_decoder(&key, &mut syn, threshold_cache);
+    let success = e_in == e_out;
+    assert!(same_syndrome || !success);
+    DecodingResult {
+        key,
+        vector: tagged_error_vector,
+        success
+    }
 }
 
 // Runs decoding_trial in a loop, sending decoding failures (as they occur) and trial
@@ -265,6 +273,44 @@ fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
     };
 }
 
+fn start_message(number_of_trials: u64, weak_key_filter: i8, weak_key_threshold: usize,
+    atls: Option<NearCodewordClass>, atls_overlap: Option<usize>, thread_count: u64) -> String
+{
+    let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
+        BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
+    let weak_key_message = match weak_key_filter {
+        -1 => {
+            format!("    Testing only non-weak keys (T = {weak_key_threshold})\n")
+        }
+        0 => String::new(),
+        filter => {
+            format!("    Testing only weak keys of type {filter} (T = {weak_key_threshold})\n")
+        }
+    };
+    let atls_message = if let Some(atls_set) = atls {
+        let l_str = if let Some(l) = atls_overlap {
+            l.to_string()
+        } else {
+            String::from("l")
+        };
+        format!("    Sampling error vectors from A_{{t,{l_str}}}({atls_set})\n")
+    } else {
+        String::new()
+    };
+    let thread_message = if thread_count > 1 {
+        format!("[running with {thread_count} threads]\n")
+    } else {
+        String::new()
+    };
+    format!(
+        "Starting decoding trials (N = {number_of_trials}) with parameters:\n\
+        {parameter_message}\
+        {weak_key_message}\
+        {atls_message}\
+        {thread_message}"
+    )
+}
+
 fn end_message(failure_count: u64, number_of_trials: u64, runtime: Duration) -> String {
     let dfr = failure_count as f64 / number_of_trials as f64;
     let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
@@ -286,7 +332,24 @@ fn end_message(failure_count: u64, number_of_trials: u64, runtime: Duration) -> 
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
+pub fn avx2_warning() {
+    // Warn if non-AVX2 fallback is used
+    if !std::arch::is_x86_feature_detected!("avx2") {
+        eprintln!("Warning: AVX2 not supported; falling back to slower method.");
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        if std::arch::is_x86_feature_detected!("avx2") {
+            eprintln!("Warning: binary compiled without AVX2 feature; falling back to slower method.");
+        }
+    }
+}
+
 pub fn run_cli(args: Args) -> Result<(), UserInputError> {
+    avx2_warning();
     let number_of_trials = args.number as u64;
     let weak_key_filter = args.weak_keys;
     let weak_key_threshold = if weak_key_filter == 0 { 0 } else { args.weak_key_threshold };
@@ -311,29 +374,8 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
     let mut failure_count = 0;
     let mut decoding_failures: Vec<DecodingFailureRecord> = Vec::new();
     if args.verbose >= 1 {
-        println!("Starting decoding trials (N = {}) with parameters:", number_of_trials);
-        println!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}",
-            r, d, t, NB_ITER, GRAY_THRESHOLD_DIFF);
-        match weak_key_filter {
-            -1 => {
-                println!("    Testing only non-weak keys (T = {})", weak_key_threshold);
-            }
-            0 => {}
-            filter => {
-                println!("    Testing only weak keys of type {} (T = {})", filter, weak_key_threshold);
-            }
-        }
-        if let Some(atls_set) = args.atls {
-            let l_str = if let Some(l) = args.atls_overlap {
-                l.to_string()
-            } else {
-                String::from("l")
-            };
-            println!("    Sampling error vectors from A_{{t,{}}}({})", l_str, atls_set);
-        }
-        if thread_count > 1 {
-            println!("[running with {} threads]\n", thread_count);
-        }
+        println!("{}", start_message(number_of_trials, weak_key_filter, weak_key_threshold,
+            args.atls, args.atls_overlap, thread_count));
     }
     let start_time = Instant::now();
     if thread_count > 1 { // multi-threaded mode
@@ -353,7 +395,7 @@ pub fn run_cli(args: Args) -> Result<(), UserInputError> {
             });
         }
         // Drop original transmitter so rx will close when all threads finish
-        std::mem::drop(tx);
+        drop(tx);
         // Track thread stats and how many threads are still in progress
         let mut thread_stats: HashMap<u64, ThreadStats> = HashMap::with_capacity(thread_count as usize);
         // Wait for messages
