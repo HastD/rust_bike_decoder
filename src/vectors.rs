@@ -1,6 +1,6 @@
 use crate::parameters::*;
 use rand::{Rng, distributions::{Distribution, Uniform}};
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Serializer, Deserialize};
 use std::{cmp, fmt};
 use thiserror::Error;
 
@@ -19,14 +19,20 @@ impl fmt::Display for InvalidSupport {
 }
 
 // Sparse vector of fixed weight and length over GF(2)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     #[serde(with = "serde_arrays")]
     [Index; WEIGHT]
 );
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
-    // Ensure that the support represents a valid vector of the specified weight and length
+    pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
+        let v = Self(supp);
+        v.validate()?;
+        Ok(v)
+    }
+
+// Ensure that the support represents a valid vector of the specified weight and length
     pub fn validate(&self) -> Result<(), InvalidSupport> {
         for idx in self.0 {
             if idx >= self.length() {
@@ -43,10 +49,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Ok(())
     }
 
-    pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
-        let v = Self(supp);
-        v.validate()?;
-        Ok(v)
+    pub fn sort(&mut self) {
+        self.0.sort()
     }
 
     #[inline]
@@ -249,6 +253,16 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
                 return block;
             }
         }
+    }
+}
+
+// Sort support lists before serializing
+impl<const W: usize, const L: usize> Serialize for SparseVector<W, L> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    {
+        let mut supp = self.0.clone();
+        supp.sort();
+        supp.serialize(serializer)
     }
 }
 
