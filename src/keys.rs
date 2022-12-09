@@ -62,20 +62,52 @@ impl Key {
         self.h1.sort();
     }
 
+    pub fn matches_filter(&self, key_filter: KeyFilter) -> bool {
+        match key_filter {
+            KeyFilter::Any => true,
+            KeyFilter::NonWeak(threshold) => !self.is_weak(threshold),
+            KeyFilter::Weak(weak_type, threshold) => match weak_type {
+                WeakType::Type1 => self.is_weak_type1(threshold),
+                WeakType::Type2 => self.is_weak_type2(threshold),
+                WeakType::Type3 => self.is_weak_type3(threshold),
+            }
+        }
+    }
+
+    pub fn is_weak_type1(&self, _threshold: usize) -> bool {
+        unimplemented!();
+    }
+
+    pub fn is_weak_type2(&self, threshold: usize) -> bool {
+        self.h0.shifts_above_threshold(threshold) || self.h1.shifts_above_threshold(threshold)
+    }
+
+    pub fn is_weak_type3(&self, threshold: usize) -> bool {
+        self.h0.max_shifted_product_weight_geq(&self.h1, threshold)
+    }
+
+    pub fn is_weak(&self, threshold: usize) -> bool {
+        self.is_weak_type2(threshold) || self.is_weak_type3(threshold)
+    }
+
+    pub fn random_filtered<R: Rng + ?Sized>(key_filter: KeyFilter, rng: &mut R) -> Self {
+        match key_filter {
+            KeyFilter::Any => Self::random(rng),
+            KeyFilter::NonWeak(threshold) => Self::random_non_weak(threshold, rng),
+            KeyFilter::Weak(weak_type, threshold) => match weak_type {
+                WeakType::Type1 => Self::random_weak_type1(threshold, rng),
+                WeakType::Type2 => Self::random_weak_type2(threshold, rng),
+                WeakType::Type3 => Self::random_weak_type3(threshold, rng),
+            },
+        }
+    }
+
     #[inline]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
             h0: CyclicBlock::random(rng),
             h1: CyclicBlock::random(rng)
         }
-    }
-
-    pub fn is_weak(&self, threshold: usize) -> bool {
-        // type I or II weak key
-        self.h0.shifts_above_threshold(threshold)
-        || self.h1.shifts_above_threshold(threshold)
-        // type III weak key
-        || self.h0.max_shifted_product_weight_geq(&self.h1, threshold)
     }
 
     pub fn random_non_weak<R>(threshold: usize, rng: &mut R) -> Self
@@ -126,6 +158,28 @@ impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{{h0: {}, h1: {}}}", self.h0(), self.h1())
     }
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum WeakType {
+    Type1, Type2, Type3
+}
+
+impl WeakType {
+    pub fn number(&self) -> u8 {
+        match self {
+            Self::Type1 => 1,
+            Self::Type2 => 2,
+            Self::Type3 => 3,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum KeyFilter {
+    Any,
+    NonWeak(usize),
+    Weak(WeakType, usize),
 }
 
 #[cfg(test)]

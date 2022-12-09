@@ -10,7 +10,7 @@ pub type SparseErrorVector = SparseVector<ERROR_WEIGHT, ROW_LENGTH>;
 pub type ErrorVector = DenseVector<ROW_LENGTH>;
 
 #[derive(Error, Debug)]
-pub struct InvalidSupport(String);
+pub struct InvalidSupport(pub String);
 
 impl fmt::Display for InvalidSupport {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

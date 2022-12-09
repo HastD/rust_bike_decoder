@@ -11,11 +11,12 @@ pub mod syndrome;
 pub mod threshold;
 pub mod vectors;
 
-use crate::cli::{Args, Settings, UserInputError};
+use crate::cli::{Args, Settings, SettingsError};
 use clap::Parser;
 
-fn main() -> Result<(), UserInputError> {
+fn main() -> Result<(), SettingsError> {
     let args = Args::parse();
     let settings = Settings::from_args(args)?;
-    cli::run_cli(settings)
+    cli::run_cli(settings);
+    Ok(())
 }

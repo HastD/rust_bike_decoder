@@ -1,7 +1,7 @@
 use crate::{
     atls::{self, NearCodewordClass, ErrorVectorSource, TaggedErrorVector},
     decoder,
-    keys::{Key, CyclicBlock},
+    keys::{Key, KeyFilter, WeakType, CyclicBlock},
     parameters::*,
     syndrome::Syndrome,
     threshold::ThresholdCache,
@@ -33,8 +33,7 @@ pub struct Args {
     weak_keys: i8,
     #[arg(short='T',long,default_value_t=3,requires="weak_keys",help="Weak key threshold")]
     weak_key_threshold: usize,
-    #[arg(long,conflicts_with_all=["weak_keys","weak_key_threshold"],
-        help="Always use the specified key (in JSON format)")]
+    #[arg(long, help="Always use the specified key (in JSON format)")]
     fixed_key: Option<String>,
     #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)")]
     atls: Option<NearCodewordClass>,
@@ -56,8 +55,7 @@ pub struct Args {
 #[derive(Clone, Debug)]
 pub struct Settings {
     number_of_trials: u64,
-    weak_key_filter: i8,
-    weak_key_threshold: usize,
+    key_filter: KeyFilter,
     fixed_key: Option<Key>,
     atls: Option<NearCodewordClass>,
     atls_overlap: Option<usize>,
@@ -69,23 +67,50 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn from_args(args: Args) -> Result<Self, UserInputError> {
-        if let Some(l) = args.atls_overlap {
+    const MIN_SAVE_FREQUENCY: u64 = 10000;
+    const MAX_THREAD_COUNT: u64 = 1024;
+
+    pub fn validate(&self) -> Result<(), SettingsError> {
+        if let Some(l) = self.atls_overlap {
             // unwrap() is safe here because atls_overlap requires atls when arguments are parsed
-            let sample_class = args.atls.unwrap();
+            let sample_class = self.atls.ok_or(SettingsError::DependencyError(
+                "atls_overlap requires atls to be set".to_string()))?;
             let l_max = sample_class.max_l();
             if l > l_max {
-                return Err(UserInputError::RangeError(
+                return Err(SettingsError::RangeError(
                     format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_class)));
             }
         }
-        Ok(Self {
+        if self.save_frequency < Self::MIN_SAVE_FREQUENCY {
+            return Err(SettingsError::RangeError(
+                format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
+        } else if self.thread_count > Self::MAX_THREAD_COUNT {
+            return Err(SettingsError::RangeError(
+                format!("thread_count must be >= {}", Self::MAX_THREAD_COUNT)));
+        }
+        if let Some(fixed_key) = &self.fixed_key {
+            fixed_key.validate()?;
+            if !fixed_key.matches_filter(self.key_filter) {
+                return Err(SettingsError::DataError(InvalidSupport(
+                    "fixed_key does not match key filter".to_string())));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn from_args(args: Args) -> Result<Self, SettingsError> {
+        let settings = Self {
             number_of_trials: args.number as u64,
-            weak_key_filter: args.weak_keys,
-            weak_key_threshold: if args.weak_keys == 0 {
-                0
-            } else {
-                args.weak_key_threshold
+            key_filter: match args.weak_keys {
+                0 => KeyFilter::Any,
+                -1 => KeyFilter::NonWeak(args.weak_key_threshold),
+                1 => KeyFilter::Weak(WeakType::Type1, args.weak_key_threshold),
+                2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
+                3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
+                _ => {
+                    return Err(SettingsError::RangeError(
+                        "weak_key_filter must be in {-1, 0, 1, 2, 3}".to_string()));
+                }
             },
             fixed_key: if let Some(fixed_key_str) = args.fixed_key {
                 let mut key: Key = serde_json::from_str(&fixed_key_str)?;
@@ -95,17 +120,19 @@ impl Settings {
             } else { None },
             atls: args.atls,
             atls_overlap: args.atls_overlap,
-            save_frequency: cmp::max(10000, args.savefreq.unwrap_or(args.number) as u64),
+            save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as u64),
             record_max: args.recordmax as u64,
             verbose: args.verbose,
-            thread_count: cmp::min(cmp::max(args.threads, 1), 1024),
+            thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
             output_file: args.output,
-        })
+        };
+        settings.validate()?;
+        Ok(settings)
     }
 }
 
 #[derive(Error, Debug)]
-pub enum UserInputError {
+pub enum SettingsError {
     #[error("fixed_key format must be: {{\"h0\": [...], \"h1\": [...]}}")]
     JsonError(serde_json::Error),
     #[error("blocks of fixed_key must have {} distinct entries in range 0..{}",
@@ -113,15 +140,17 @@ pub enum UserInputError {
     DataError(InvalidSupport),
     #[error("argument outside of valid range")]
     RangeError(String),
+    #[error("broken argument dependency")]
+    DependencyError(String),
 }
 
-impl From<serde_json::Error> for UserInputError {
+impl From<serde_json::Error> for SettingsError {
     fn from(err: serde_json::Error) -> Self {
         Self::JsonError(err)
     }
 }
 
-impl From<InvalidSupport> for UserInputError {
+impl From<InvalidSupport> for SettingsError {
     fn from(err: InvalidSupport) -> Self {
         Self::DataError(err)
     }
@@ -190,14 +219,8 @@ pub fn decoding_trial<R: Rng + ?Sized>(
     threshold_cache: &mut ThresholdCache
 ) -> DecodingResult {
     // Use fixed_key if provided, otherwise generate random key using specified filter
-    let key = settings.fixed_key.clone().unwrap_or_else(|| match settings.weak_key_filter {
-        0 => Key::random(rng),
-        -1 => Key::random_non_weak(settings.weak_key_threshold, rng),
-        1 => Key::random_weak_type1(settings.weak_key_threshold, rng),
-        2 => Key::random_weak_type2(settings.weak_key_threshold, rng),
-        3 => Key::random_weak_type3(settings.weak_key_threshold, rng),
-        _ => panic!("Invalid value for weak key filter (must be -1, 0 (default), 1, 2, or 3)")
-    });
+    let key = settings.fixed_key.clone()
+        .unwrap_or_else(|| Key::random_filtered(settings.key_filter, rng));
     let tagged_error_vector = if let Some(sample_class) = settings.atls {
         let l = settings.atls_overlap.unwrap_or_else(|| rng.gen_range(0 ..= sample_class.max_l()));
         atls::element_of_atls(&key, sample_class, l, rng)
@@ -283,8 +306,7 @@ fn build_json(
         "gray_threshold_diff": GRAY_THRESHOLD_DIFF,
         "bf_threshold_min": BF_THRESHOLD_MIN,
         "bf_masked_threshold": BF_MASKED_THRESHOLD,
-        "weak_key_filter": settings.weak_key_filter,
-        "weak_key_threshold": settings.weak_key_threshold,
+        "key_filter": settings.key_filter,
         "fixed_key": settings.fixed_key,
         "trials": total_trials,
         "failure_count": failure_count,
@@ -310,14 +332,12 @@ fn start_message(settings: &Settings) -> String
 {
     let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
         BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
-    let weak_key_message = match settings.weak_key_filter {
-        -1 => {
-            format!("    Testing only non-weak keys (T = {})\n", settings.weak_key_threshold)
-        }
-        0 => String::new(),
-        filter => {
+    let weak_key_message = match settings.key_filter {
+        KeyFilter::Any => String::new(),
+        KeyFilter::NonWeak(threshold) => format!("    Testing only non-weak keys (T = {})\n", threshold),
+        KeyFilter::Weak(weak_type, threshold) => {
             format!("    Testing only weak keys of type {} (T = {})\n",
-                filter, settings.weak_key_threshold)
+                weak_type.number(), threshold)
         }
     };
     let atls_message = if let Some(atls_set) = settings.atls {
@@ -376,9 +396,9 @@ pub fn avx2_warning() {
     }
 }
 
-pub fn run_cli_single_threaded(settings: Settings) -> Result<(), UserInputError> {
+pub fn run_cli_single_threaded(settings: Settings) {
     let mut failure_count = 0;
-    let mut decoding_failures: Vec<DecodingFailureRecord> = Vec::new();
+    let mut decoding_failures = Vec::new();
     let start_time = Instant::now();
     let mut rng = crate::random::get_rng();
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
@@ -415,12 +435,11 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), UserInputError>
     if settings.verbose >= 1 {
         println!("{}", end_message(failure_count, settings.number_of_trials, start_time.elapsed()));
     }
-    Ok(())
 }
 
-pub fn run_cli_multithreaded(settings: Settings) -> Result<(), UserInputError> {
+pub fn run_cli_multithreaded(settings: Settings) {
     let mut failure_count = 0;
-    let mut decoding_failures: Vec<DecodingFailureRecord> = Vec::new();
+    let mut decoding_failures = Vec::new();
     let start_time = Instant::now();
     // Set up (transmitter, receiver) pair and divide trials among threads
     let (tx, rx) = mpsc::channel();
@@ -438,7 +457,7 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), UserInputError> {
     // Drop original transmitter so rx will close when all threads finish
     drop(tx);
     // Track thread stats and how many threads are still in progress
-    let mut thread_stats: HashMap<u64, ThreadStats> = HashMap::with_capacity(settings.thread_count as usize);
+    let mut thread_stats = HashMap::with_capacity(settings.thread_count as usize);
     // Wait for messages
     for received in rx {
         match received {
@@ -483,18 +502,16 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), UserInputError> {
     if settings.verbose >= 1 {
         println!("{}", end_message(failure_count, settings.number_of_trials, start_time.elapsed()));
     }
-    Ok(())
 }
 
-pub fn run_cli(settings: Settings) -> Result<(), UserInputError> {
+pub fn run_cli(settings: Settings) {
     avx2_warning();
     if settings.verbose >= 1 {
         println!("{}", start_message(&settings));
     }
     if settings.thread_count > 1 {
-        run_cli_multithreaded(settings)?;
+        run_cli_multithreaded(settings);
     } else {
-        run_cli_single_threaded(settings)?;
+        run_cli_single_threaded(settings);
     }
-    Ok(())
 }
