@@ -57,6 +57,11 @@ impl Key {
         Ok(())
     }
 
+    pub fn sort(&mut self) {
+        self.h0.sort();
+        self.h1.sort();
+    }
+
     #[inline]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
