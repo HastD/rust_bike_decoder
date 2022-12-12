@@ -179,10 +179,9 @@ fn sample_n(key: &Key, block_flag: u8) -> Vec<Index>
 
 fn sample_2n(key: &Key, shift: Index, block_flag: u8) -> Vec<Index>
 {
-    let supp1 = sample_n(key, block_flag % 2);
+    let mut sum_n = sample_n(key, block_flag % 2);
     let mut supp2 = sample_n(key, (block_flag >> 1) % 2);
     shift_blockwise(&mut supp2, shift, BLOCK_LENGTH as Index);
-    let mut sum_n = supp1.clone();
     // Symmetric difference of supp1 and supp2
     for idx in &supp2 {
         if let Some(pos) = sum_n.iter().position(|x| *x == *idx) {

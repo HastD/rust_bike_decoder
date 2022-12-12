@@ -160,7 +160,7 @@ mod tests {
             let mut syn = Syndrome::from([1; BLOCK_LENGTH]);
             let upc = unsatisfied_parity_checks(&key, &mut syn);
             for k in 0..2 {
-                assert_eq!(&upc[k][..BLOCK_LENGTH], &[15; BLOCK_LENGTH]);
+                assert_eq!(&upc[k][..BLOCK_LENGTH], &[BLOCK_WEIGHT as u8; BLOCK_LENGTH]);
             }
         }
     }
