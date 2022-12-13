@@ -11,8 +11,9 @@ use std::{
     cmp,
     collections::HashMap,
     fmt::Display,
-    fs::File,
-    io::Write,
+    fs::{self, File},
+    io::{self, Write},
+    path::{Path, PathBuf},
     sync::mpsc,
     time::{Duration, Instant},
     thread,
@@ -22,6 +23,7 @@ use rand::Rng;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -41,6 +43,8 @@ pub struct Args {
     atls_overlap: Option<usize>,
     #[arg(short,long,help="Output file [default stdout]")]
     output: Option<String>,
+    #[arg(long, help="If output file already exists, overwrite without creating backup")]
+    overwrite: bool,
     #[arg(short,long,default_value_t=10000.0,help="Max number of decoding failures recorded")]
     recordmax: f64, // parsed as scientific notation to u64
     #[arg(short,long,help="Save to disk frequency [default only at end]")]
@@ -63,42 +67,43 @@ pub struct Settings {
     record_max: u64,
     verbose: u8,
     thread_count: u64,
-    output_file: Option<String>,
+    output_file: Option<PathBuf>,
+    overwrite: bool,
 }
 
 impl Settings {
     const MIN_SAVE_FREQUENCY: u64 = 10000;
     const MAX_THREAD_COUNT: u64 = 1024;
 
-    pub fn validate(&self) -> Result<(), SettingsError> {
+    pub fn validate(&self) -> Result<(), RuntimeError> {
         if let Some(l) = self.atls_overlap {
             // unwrap() is safe here because atls_overlap requires atls when arguments are parsed
-            let sample_class = self.atls.ok_or(SettingsError::DependencyError(
+            let sample_class = self.atls.ok_or(RuntimeError::DependencyError(
                 "atls_overlap requires atls to be set".to_string()))?;
             let l_max = sample_class.max_l();
             if l > l_max {
-                return Err(SettingsError::RangeError(
+                return Err(RuntimeError::RangeError(
                     format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_class)));
             }
         }
         if self.save_frequency < Self::MIN_SAVE_FREQUENCY {
-            return Err(SettingsError::RangeError(
+            return Err(RuntimeError::RangeError(
                 format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
         } else if self.thread_count > Self::MAX_THREAD_COUNT {
-            return Err(SettingsError::RangeError(
+            return Err(RuntimeError::RangeError(
                 format!("thread_count must be >= {}", Self::MAX_THREAD_COUNT)));
         }
         if let Some(fixed_key) = &self.fixed_key {
             fixed_key.validate()?;
             if !fixed_key.matches_filter(self.key_filter) {
-                return Err(SettingsError::DataError(InvalidSupport(
+                return Err(RuntimeError::DataError(InvalidSupport(
                     "fixed_key does not match key filter".to_string())));
             }
         }
         Ok(())
     }
 
-    pub fn from_args(args: Args) -> Result<Self, SettingsError> {
+    pub fn from_args(args: Args) -> Result<Self, RuntimeError> {
         let settings = Self {
             number_of_trials: args.number as u64,
             key_filter: match args.weak_keys {
@@ -108,7 +113,7 @@ impl Settings {
                 2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
                 3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
                 _ => {
-                    return Err(SettingsError::RangeError(
+                    return Err(RuntimeError::RangeError(
                         "weak_key_filter must be in {-1, 0, 1, 2, 3}".to_string()));
                 }
             },
@@ -124,7 +129,8 @@ impl Settings {
             record_max: args.recordmax as u64,
             verbose: args.verbose,
             thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
-            output_file: args.output,
+            output_file: args.output.map(PathBuf::from),
+            overwrite: args.overwrite,
         };
         settings.validate()?;
         Ok(settings)
@@ -132,28 +138,17 @@ impl Settings {
 }
 
 #[derive(Error, Debug)]
-pub enum SettingsError {
-    #[error("fixed_key format must be: {{\"h0\": [...], \"h1\": [...]}}")]
-    JsonError(serde_json::Error),
-    #[error("blocks of fixed_key must have {} distinct entries in range 0..{}",
-        BLOCK_WEIGHT, BLOCK_LENGTH)]
-    DataError(InvalidSupport),
-    #[error("argument outside of valid range")]
+pub enum RuntimeError {
+    #[error("error parsing JSON for fixed_key argument: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("invalid support for vector or key: {0}")]
+    DataError(#[from] InvalidSupport),
+    #[error("argument outside of valid range: {0}")]
     RangeError(String),
-    #[error("broken argument dependency")]
+    #[error("broken argument dependency: {0}")]
     DependencyError(String),
-}
-
-impl From<serde_json::Error> for SettingsError {
-    fn from(err: serde_json::Error) -> Self {
-        Self::JsonError(err)
-    }
-}
-
-impl From<InvalidSupport> for SettingsError {
-    fn from(err: InvalidSupport) -> Self {
-        Self::DataError(err)
-    }
+    #[error("error writing to file: {0}")]
+    IOError(#[from] io::Error),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -316,16 +311,26 @@ fn build_json(
     })
 }
 
-fn write_to_file_or_stdout(path: &Option<String>, data: &impl Display) {
-    match path {
-        Some(filename) => {
-            let mut file = File::create(filename).expect("Must be able to open file");
-            file.write_all(&data.to_string().into_bytes()).expect("Must be able to write to file");
+fn check_file_writable(output: Option<&Path>, overwrite: bool) -> io::Result<()> {
+    if let Some(filename) = output {
+        if !overwrite && filename.try_exists()? && fs::metadata(filename)?.len() > 0 {
+            // If file already exists and is nonempty, copy its contents to a backup file
+            fs::copy(filename, &format!("{}-backup-{}", filename.display(), Uuid::new_v4()))?;
         }
-        None => {
-            println!("{}", data);
-        }
-    };
+        let mut file = File::create(filename)?;
+        file.write_all(b"")?;
+    }
+    Ok(())
+}
+
+fn write_to_file_or_stdout(output: Option<&Path>, data: &impl Display) -> io::Result<()> {
+    if let Some(filename) = output {
+        let mut file = File::create(filename)?;
+        file.write_all(&data.to_string().into_bytes())?;
+    } else {
+        println!("{}", data);
+    }
+    Ok(())
 }
 
 fn start_message(settings: &Settings) -> String
@@ -396,7 +401,7 @@ pub fn avx2_warning() {
     }
 }
 
-pub fn run_cli_single_threaded(settings: Settings) {
+pub fn run_cli_single_threaded(settings: Settings) -> io::Result<()> {
     let mut failure_count = 0;
     let mut decoding_failures = Vec::new();
     let start_time = Instant::now();
@@ -420,7 +425,7 @@ pub fn run_cli_single_threaded(settings: Settings) {
         if i != 0 && i % settings.save_frequency == 0 {
             let runtime = start_time.elapsed();
             let json_output = build_json(failure_count, i, &decoding_failures, runtime, &settings, None);
-            write_to_file_or_stdout(&settings.output_file, &json_output);
+            write_to_file_or_stdout(settings.output_file.as_deref(), &json_output)?;
             if settings.verbose >= 2 {
                 println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                     failure_count, i, runtime.as_secs_f64());
@@ -431,13 +436,14 @@ pub fn run_cli_single_threaded(settings: Settings) {
     let runtime = start_time.elapsed();
     let json_output = build_json(failure_count, settings.number_of_trials, &decoding_failures,
         runtime, &settings, None);
-    write_to_file_or_stdout(&settings.output_file, &json_output);
+    write_to_file_or_stdout(settings.output_file.as_deref(), &json_output)?;
     if settings.verbose >= 1 {
         println!("{}", end_message(failure_count, settings.number_of_trials, start_time.elapsed()));
     }
+    Ok(())
 }
 
-pub fn run_cli_multithreaded(settings: Settings) {
+pub fn run_cli_multithreaded(settings: Settings) -> io::Result<()> {
     let mut failure_count = 0;
     let mut decoding_failures = Vec::new();
     let start_time = Instant::now();
@@ -485,7 +491,7 @@ pub fn run_cli_multithreaded(settings: Settings) {
                 let runtime = start_time.elapsed();
                 let json_output = build_json(failure_count, total_trials, &decoding_failures, runtime,
                     &settings, Some(json!(thread_stats)));
-                write_to_file_or_stdout(&settings.output_file, &json_output);
+                write_to_file_or_stdout(settings.output_file.as_deref(), &json_output)?;
                 if settings.verbose >= 2 {
                     println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                         failure_count, total_trials, runtime.as_secs_f64());
@@ -502,16 +508,19 @@ pub fn run_cli_multithreaded(settings: Settings) {
     if settings.verbose >= 1 {
         println!("{}", end_message(failure_count, settings.number_of_trials, start_time.elapsed()));
     }
+    Ok(())
 }
 
-pub fn run_cli(settings: Settings) {
+pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {
+    check_file_writable(settings.output_file.as_deref(), settings.overwrite)?;
     avx2_warning();
     if settings.verbose >= 1 {
         println!("{}", start_message(&settings));
     }
     if settings.thread_count > 1 {
-        run_cli_multithreaded(settings);
+        run_cli_multithreaded(settings)?;
     } else {
-        run_cli_single_threaded(settings);
+        run_cli_single_threaded(settings)?;
     }
+    Ok(())
 }

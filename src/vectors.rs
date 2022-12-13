@@ -32,7 +32,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Ok(v)
     }
 
-// Ensure that the support represents a valid vector of the specified weight and length
+    // Ensure that the support represents a valid vector of the specified weight and length
     pub fn validate(&self) -> Result<(), InvalidSupport> {
         for idx in self.0 {
             if idx >= self.length() {

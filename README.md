@@ -38,6 +38,8 @@ Options:
           Overlap parameter l in A_{t,l}(S)
   -o, --output <OUTPUT>
           Output file [default stdout]
+      --overwrite
+          If output file already exists, overwrite without creating backup
   -r, --recordmax <RECORDMAX>
           Max number of decoding failures recorded [default: 10000]
   -s, --savefreq <SAVEFREQ>
@@ -59,7 +61,7 @@ The command-line program runs the following steps in a loop a number of times sp
 3. Compute the syndrome of the error vector.
 4. Use the BGF algorithm to attempt to decode the syndrome. Record any decoding failures.
 
-The program outputs the resulting data in JSON format (either to a file specified with the `-o` option or to `stdout`). Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. One particularly useful option for long-running trials is `-s`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
+The program outputs the resulting data in JSON format, either to a file specified with the `-o` option or to `stdout`. (If the specified output file already exists, it will be backed up by appending a random UUID to the filename unless the `--overwrite` flag is provided.) Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. One particularly useful option for long-running trials is `-s`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
 
 Values for the `-N`, `-r`, and `-s` options can be given in scientific notation.
 
