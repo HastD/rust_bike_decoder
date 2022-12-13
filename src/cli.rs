@@ -4,7 +4,7 @@ use crate::{
     ncw::{NearCodewordClass, TaggedErrorVector},
     parameters::*,
     random::Seed,
-    record::{DecodingResult, ThreadStats, ThreadStatsBuilder, DataRecord},
+    record::{DecodingResult, ThreadStats, DataRecord},
     syndrome::Syndrome,
     threshold::ThresholdCache,
     vectors::InvalidSupport,
@@ -196,45 +196,33 @@ pub fn trial_loop_async(
     let start_time = Instant::now();
     let (mut rng, seed) = crate::random::get_rng(settings.seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-    let mut failure_count = 0;
-    let mut cached_failure_count = 0;
+    let mut stats = ThreadStats::new(thread_id);
+    stats.set_seed(seed);
     for i in 0..settings.number_of_trials {
         let result = decoding_trial(&settings, &mut rng, &mut cache);
         if !result.success() {
-            failure_count += 1;
-            if failure_count <= settings.record_max {
+            let will_record_failure = stats.failure_count() <= settings.record_max;
+            // When many decoding failures are found, we cache decoding failure counts.
+            // This prevents the main thread from being flooded with messages,
+            // which can be a bottleneck in cases with a very high decoding failure rate.
+            stats.increment_failure_count(will_record_failure);
+            if will_record_failure {
                 let message = DecoderMessage::TrialResult(result);
                 tx.send(message).expect("Error transmitting decoding failure");
-            } else {
-                // When many decoding failures are found, cache decoding failure counts.
-                // This prevents the main thread from being flooded with messages,
-                // which can be a bottleneck in cases with a very high decoding failure rate.
-                cached_failure_count += 1;
             }
         }
         if i != 0 && i % settings.save_frequency == 0 {
-            let message = DecoderMessage::Stats(ThreadStatsBuilder::default()
-                .thread_id(thread_id)
-                .seed(seed)
-                .failure_count(failure_count)
-                .cached_failure_count(cached_failure_count)
-                .trials(i)
-                .runtime(start_time.elapsed())
-                .done(false)
-                .build().unwrap());
+            stats.set_trials(i);
+            stats.set_runtime(start_time.elapsed());
+            let message = DecoderMessage::Stats(stats.clone());
             tx.send(message).expect("Error transmitting thread stats");
-            cached_failure_count = 0;
+            stats.reset_cached_failure_count();
         }
     }
-    let message = DecoderMessage::Stats(ThreadStatsBuilder::default()
-        .thread_id(thread_id)
-        .seed(seed)
-        .failure_count(failure_count)
-        .cached_failure_count(cached_failure_count)
-        .trials(settings.number_of_trials)
-        .runtime(start_time.elapsed())
-        .done(true)
-        .build().unwrap());
+    stats.set_trials(settings.number_of_trials);
+    stats.set_runtime(start_time.elapsed());
+    stats.set_done(true);
+    let message = DecoderMessage::Stats(stats);
     tx.send(message).expect("Error transmitting thread stats");
 }
 
@@ -408,9 +396,6 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
             }
             // If we receive updated thread statistics, record and save those
             DecoderMessage::Stats(stats) => {
-                data.update_thread_stats(stats);
-                data.set_runtime(start_time.elapsed());
-                write_to_file_or_stdout(settings.output_file.as_deref(), &data)?;
                 if settings.verbose >= 2 {
                     println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                         data.failure_count(), data.trials(), data.runtime().as_secs_f64());
@@ -421,6 +406,9 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
                             stats.runtime().as_secs_f64());
                     }
                 }
+                data.update_thread_stats(stats);
+                data.set_runtime(start_time.elapsed());
+                write_to_file_or_stdout(settings.output_file.as_deref(), &data)?;
             }
         }
     }

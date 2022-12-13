@@ -6,7 +6,6 @@ use crate::{
     vectors::SparseErrorVector,
 };
 use std::{fmt, time::Duration};
-use derive_builder::Builder;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 
@@ -64,10 +63,10 @@ impl From<DecodingResult> for DecodingFailureRecord {
     }
 }
 
-#[derive(Builder, Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ThreadStats {
     thread_id: usize,
-    seed: Seed,
+    seed: Option<Seed>,
     failure_count: usize,
     #[serde(skip)] cached_failure_count: usize,
     trials: usize,
@@ -76,10 +75,10 @@ pub struct ThreadStats {
 }
 
 impl ThreadStats {
-    pub fn initial(thread_id: usize) -> Self {
+    pub fn new(thread_id: usize) -> Self {
         Self {
             thread_id,
-            seed: Seed::default(),
+            seed: None,
             failure_count: 0,
             cached_failure_count: 0,
             trials: 0,
@@ -94,8 +93,19 @@ impl ThreadStats {
     }
 
     #[inline]
+    pub fn set_done(&mut self, done: bool) {
+        self.done = done;
+    }
+
+    #[inline]
     pub fn id(&self) -> usize {
         self.thread_id
+    }
+
+    #[inline]
+    pub fn set_seed(&mut self, seed: Seed) {
+        assert!(self.seed.is_none(), "Can't set seed twice");
+        self.seed = Some(seed);
     }
 
     #[inline]
@@ -104,13 +114,37 @@ impl ThreadStats {
     }
 
     #[inline]
+    pub fn increment_failure_count(&mut self, recorded: bool) {
+        self.failure_count += 1;
+        if !recorded {
+            self.cached_failure_count += 1;
+        }
+    }
+
+    #[inline]
+    pub fn reset_cached_failure_count(&mut self) {
+        self.cached_failure_count = 0;
+    }
+
+    #[inline]
     pub fn trials(&self) -> usize {
         self.trials
     }
 
     #[inline]
+    pub fn set_trials(&mut self, count: usize) {
+        assert!(count >= self.trials, "Number of trials cannot decrease");
+        self.trials = count;
+    }
+
+    #[inline]
     pub fn runtime(&self) -> Duration {
         self.runtime
+    }
+
+    #[inline]
+    pub fn set_runtime(&mut self, runtime: Duration) {
+        self.runtime = runtime;
     }
 }
 
@@ -155,7 +189,7 @@ impl DataRecord {
             thread_stats: if thread_count > 1 {
                 let mut stats = Vec::with_capacity(thread_count);
                 for i in 0..thread_count {
-                    stats.push(ThreadStats::initial(i));
+                    stats.push(ThreadStats::new(i));
                 }
                 Some(stats)
             } else { None },
@@ -207,11 +241,12 @@ impl DataRecord {
 
     #[inline]
     pub fn update_thread_stats(&mut self, mut stats: ThreadStats) {
+        let thread_id = stats.id();
         self.add_to_failure_count(stats.cached_failure_count);
         stats.cached_failure_count = 0;
         let thread_stats = self.thread_stats.as_mut()
             .expect("Can't record thread stats, not in multithreaded mode");
-        thread_stats[stats.thread_id] = stats;
+        thread_stats[thread_id] = stats;
         self.trials = thread_stats.iter().map(|stats| stats.trials).sum();
     }
 }
