@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BatchSize};
 use bike_decoder::{
-    atls::{self, NearCodewordClass},
     decoder,
     keys::Key,
+    ncw::{TaggedErrorVector, NearCodewordClass},
     random,
     parameters::*,
     syndrome::Syndrome,
@@ -80,7 +80,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         b.iter(|| black_box(threshold::ThresholdCache::with_parameters(r, d, t).precompute_all()))
     });
-    c.bench_function("atls", |b| {
+    c.bench_function("near_codeword", |b| {
         b.iter_batched_ref(
             || {
                 let mut rng = rand::thread_rng();
@@ -89,9 +89,9 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 (key, l, rng)
             },
             |inputs| black_box((
-                atls::element_of_atls(&inputs.0, NearCodewordClass::C, inputs.1, &mut inputs.2),
-                atls::element_of_atls(&inputs.0, NearCodewordClass::N, inputs.1, &mut inputs.2),
-                atls::element_of_atls(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut inputs.2),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut inputs.2),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut inputs.2),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut inputs.2),
             )),
             BatchSize::SmallInput
         )

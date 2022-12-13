@@ -31,6 +31,11 @@ impl Key {
     }
 
     #[inline]
+    pub fn take_blocks(self) -> (CyclicBlock, CyclicBlock) {
+        (self.h0, self.h1)
+    }
+
+    #[inline]
     pub fn h0_supp(&self) -> &[Index; BLOCK_WEIGHT] {
         self.h0.support()
     }

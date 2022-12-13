@@ -281,12 +281,7 @@ impl<const W: usize, const L: usize> cmp::Eq for SparseVector<W, L> { }
 
 impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut supp = self.support().clone();
-        supp.sort();
-        let mut str_supp = Vec::new();
-        for index in supp {
-            str_supp.push(index.to_string());
-        }
+        let str_supp: Vec<_> = self.support().iter().map(|idx| idx.to_string()).collect();
         write!(f, "[{}]", str_supp.join(", "))
     }
 }

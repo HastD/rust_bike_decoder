@@ -69,7 +69,8 @@ impl NearCodewordSet {
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum ErrorVectorSource {
     Random,
-    NearCodeword(NearCodewordSet)
+    NearCodeword(NearCodewordSet),
+    Other,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -83,15 +84,79 @@ impl TaggedErrorVector {
     pub fn vector(&self) -> &SparseErrorVector {
         &self.vector
     }
+
     #[inline]
     pub fn source(&self) -> &ErrorVectorSource {
         &self.source
     }
+
     #[inline]
-    pub fn from_random(vector: SparseErrorVector) -> Self {
+    pub fn take_vector(self) -> (SparseErrorVector, ErrorVectorSource) {
+        (self.vector, self.source)
+    }
+
+    #[inline]
+    pub fn from_other(vector: SparseErrorVector) -> Self {
         Self {
             vector,
+            source: ErrorVectorSource::Other,
+        }
+    }
+
+    #[inline]
+    pub fn random<R>(rng: &mut R) -> Self
+        where R: Rng + ?Sized
+    {
+        Self {
+            vector: SparseErrorVector::random(rng),
             source: ErrorVectorSource::Random,
+        }
+    }
+
+    pub fn near_codeword<R>(key: &Key, class: NearCodewordClass, l: usize, rng: &mut R)
+        -> TaggedErrorVector
+        where R: Rng + ?Sized
+    {
+        let r = BLOCK_LENGTH as Index;
+        let sample = match class {
+            NearCodewordClass::C => sample_c(key),
+            NearCodewordClass::N => sample_n(key, rng.gen_range(0..2)),
+            NearCodewordClass::TwoN => {
+                loop {
+                    let sample = sample_2n(key, rng.gen_range(0..r), rng.gen_range(0..4));
+                    if sample.len() >= l {
+                        break sample;
+                    }
+                }
+            }
+        };
+        assert!(sample.len() >= l);
+        let mut supp = [0 as Index; ERROR_WEIGHT];
+        // Fill out first l entries from sample
+        for (idx, slot) in sample.choose_multiple(rng, l).zip(&mut supp[0..l]) {
+            *slot = *idx;
+        }
+        // Fill remaining elements from complement of sample
+        let mut ctr = l;
+        let dist = Uniform::new(0, ROW_LENGTH as Index);
+        while ctr < ERROR_WEIGHT {
+            supp[ctr] = dist.sample(rng);
+            if sample.contains(&supp[ctr]) || supp[l..ctr].contains(&supp[ctr]) {
+                continue;
+            } else {
+                ctr += 1;
+            }
+        }
+        let shift = rng.gen_range(0..r);
+        shift_blockwise(&mut supp, shift, r);
+        Self {
+            // Unwrap is safe because this function always produces valid vector support
+            vector: SparseErrorVector::from_support(supp).unwrap(),
+            source: ErrorVectorSource::NearCodeword(NearCodewordSet {
+                class,
+                l,
+                delta: sample.len() + ERROR_WEIGHT - 2*l,
+            })
         }
     }
 }
@@ -99,61 +164,13 @@ impl TaggedErrorVector {
 impl fmt::Display for TaggedErrorVector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.source() {
-            ErrorVectorSource::Random => write!(f, "{}", self.vector()),
             ErrorVectorSource::NearCodeword(source) => write!(f, "{} [element of A_{{t,{}}}({})]",
                 self.vector(), source.l(), source.class()),
-        }
+            _ => write!(f, "{}", self.vector()),
+            }
     }
 }
 
-pub fn element_of_atls<R: Rng + ?Sized>(
-    key: &Key,
-    class: NearCodewordClass,
-    l: usize,
-    rng: &mut R
-) -> TaggedErrorVector {
-    let r = BLOCK_LENGTH as Index;
-    let sample = match class {
-        NearCodewordClass::C => sample_c(key),
-        NearCodewordClass::N => sample_n(key, rng.gen_range(0..2)),
-        NearCodewordClass::TwoN => {
-            loop {
-                let sample = sample_2n(key, rng.gen_range(0..r), rng.gen_range(0..4));
-                if sample.len() >= l {
-                    break sample;
-                }
-            }
-        }
-    };
-    assert!(sample.len() >= l);
-    let mut supp = [0 as Index; ERROR_WEIGHT];
-    // Fill out first l entries from sample
-    for (idx, slot) in sample.choose_multiple(rng, l).zip(&mut supp[0..l]) {
-        *slot = *idx;
-    }
-    // Fill remaining elements from complement of sample
-    let mut ctr = l;
-    let dist = Uniform::new(0, ROW_LENGTH as Index);
-    while ctr < ERROR_WEIGHT {
-        supp[ctr] = dist.sample(rng);
-        if sample.contains(&supp[ctr]) || supp[l..ctr].contains(&supp[ctr]) {
-            continue;
-        } else {
-            ctr += 1;
-        }
-    }
-    let shift = rng.gen_range(0..r);
-    shift_blockwise(&mut supp, shift, r);
-    TaggedErrorVector {
-        // Unwrap is safe because this function always produces valid vector support
-        vector: SparseErrorVector::from_support(supp).unwrap(),
-        source: ErrorVectorSource::NearCodeword(NearCodewordSet {
-            class,
-            l,
-            delta: sample.len() + ERROR_WEIGHT - 2*l,
-        })
-    }
-}
 
 fn sample_c(key: &Key) -> Vec<Index> {
     let mut supp: Vec<Index> = Vec::with_capacity(ROW_WEIGHT);
