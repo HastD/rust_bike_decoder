@@ -35,7 +35,6 @@ dependencies = [
  "num-integer",
  "petgraph",
  "rand",
- "rand_core",
  "rand_xoshiro",
  "rustc-hash",
  "safe_arch",

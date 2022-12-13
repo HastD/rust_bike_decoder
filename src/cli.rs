@@ -3,6 +3,7 @@ use crate::{
     keys::{Key, KeyFilter, WeakType, CyclicBlock},
     ncw::{NearCodewordClass, ErrorVectorSource, TaggedErrorVector},
     parameters::*,
+    random::Seed,
     syndrome::Syndrome,
     threshold::ThresholdCache,
     vectors::{SparseErrorVector, InvalidSupport},
@@ -47,6 +48,8 @@ pub struct Args {
     recordmax: f64, // parsed as scientific notation to usize
     #[arg(short,long,help="Save to disk frequency [default only at end]")]
     savefreq: Option<f64>, // parsed as scientific notation to usize
+    #[arg(long, conflicts_with="threads", help="Use the specified PRNG seed instead of a random seed")]
+    seed: Option<String>,
     #[arg(long,default_value_t=1,help="Number of threads")]
     threads: usize,
     #[arg(short, long, action = clap::ArgAction::Count,
@@ -64,6 +67,7 @@ pub struct Settings {
     save_frequency: usize,
     record_max: usize,
     verbose: u8,
+    seed: Option<Seed>,
     thread_count: usize,
     output_file: Option<PathBuf>,
     overwrite: bool,
@@ -88,7 +92,10 @@ impl Settings {
                 format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
         } else if self.thread_count > Self::MAX_THREAD_COUNT {
             return Err(RuntimeError::RangeError(
-                format!("thread_count must be >= {}", Self::MAX_THREAD_COUNT)));
+                format!("thread_count must be <= {}", Self::MAX_THREAD_COUNT)));
+        } else if self.seed.is_some() && self.thread_count > 1 {
+            return Err(RuntimeError::DependencyError(
+                "seed can only be specified in single-threaded mode".to_string()));
         }
         if let Some(fixed_key) = &self.fixed_key {
             fixed_key.validate()?;
@@ -125,6 +132,9 @@ impl Settings {
             save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
+            seed: if let Some(seed_str) = args.seed {
+                serde_json::from_str(&seed_str)?
+            } else { None },
             thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,
@@ -200,6 +210,7 @@ impl From<DecodingResult> for DecodingFailureRecord {
 #[derive(Copy,Clone,Debug,Serialize,Deserialize)]
 pub struct ThreadStats {
     thread_id: usize,
+    seed: Seed,
     failure_count: usize,
     #[serde(skip)] cached_failure_count: usize,
     trials: usize,
@@ -211,6 +222,7 @@ impl ThreadStats {
     pub fn initial(thread_id: usize) -> Self {
         Self {
             thread_id,
+            seed: Seed::default(),
             failure_count: 0,
             cached_failure_count: 0,
             trials: 0,
@@ -223,7 +235,7 @@ impl ThreadStats {
 #[derive(Debug)]
 pub enum DecoderMessage {
     TrialResult(DecodingResult),
-    Stats(ThreadStats)
+    Stats(ThreadStats),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -240,6 +252,7 @@ pub struct DataRecord {
     trials: usize,
     failure_count: usize,
     decoding_failures: Vec<DecodingFailureRecord>,
+    seed: Option<Seed>,
     runtime: Duration,
     thread_count: usize,
     thread_stats: Option<Vec<ThreadStats>>,
@@ -247,6 +260,7 @@ pub struct DataRecord {
 
 impl DataRecord {
     pub fn new(settings: &Settings) -> Self {
+        let thread_count = settings.thread_count;
         Self {
             r: BLOCK_LENGTH,
             d: BLOCK_WEIGHT,
@@ -260,16 +274,23 @@ impl DataRecord {
             trials: 0,
             failure_count: 0,
             decoding_failures: Vec::new(),
+            seed: None,
             runtime: Duration::new(0, 0),
-            thread_count: settings.thread_count,
-            thread_stats: if settings.thread_count > 1 {
-                let mut stats = Vec::with_capacity(settings.thread_count);
-                for i in 0..settings.thread_count {
+            thread_count,
+            thread_stats: if thread_count > 1 {
+                let mut stats = Vec::with_capacity(thread_count);
+                for i in 0..thread_count {
                     stats.push(ThreadStats::initial(i));
                 }
                 Some(stats)
             } else { None },
         }
+    }
+
+    #[inline]
+    pub fn record_seed(&mut self, seed: Seed) {
+        assert!(self.seed.is_none(), "Can't set seed twice");
+        self.seed = Some(seed);
     }
 
     #[inline]
@@ -358,7 +379,7 @@ pub fn trial_loop_async(
     tx: mpsc::Sender<DecoderMessage>
 ) {
     let start_time = Instant::now();
-    let mut rng = crate::random::get_rng();
+    let (mut rng, seed) = crate::random::get_rng(settings.seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let mut failure_count = 0;
     let mut cached_failure_count = 0;
@@ -379,6 +400,7 @@ pub fn trial_loop_async(
         if i != 0 && i % settings.save_frequency == 0 {
             let message = DecoderMessage::Stats(ThreadStats {
                 thread_id,
+                seed,
                 failure_count,
                 cached_failure_count,
                 trials: i,
@@ -391,6 +413,7 @@ pub fn trial_loop_async(
     }
     let message = DecoderMessage::Stats(ThreadStats {
         thread_id,
+        seed,
         failure_count,
         cached_failure_count,
         trials: settings.number_of_trials,
@@ -493,7 +516,8 @@ pub fn avx2_warning() {
 pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     let mut data = DataRecord::new(&settings);
     let start_time = Instant::now();
-    let mut rng = crate::random::get_rng();
+    let (mut rng, seed) = crate::random::get_rng(settings.seed);
+    data.record_seed(seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
     for i in 0..settings.number_of_trials {
         let result = decoding_trial(&settings, &mut rng, &mut cache);

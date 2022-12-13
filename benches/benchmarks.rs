@@ -3,8 +3,8 @@ use bike_decoder::{
     decoder,
     keys::Key,
     ncw::{TaggedErrorVector, NearCodewordClass},
-    random,
     parameters::*,
+    random,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
     threshold::{self, ThresholdCache},
@@ -13,15 +13,15 @@ use rand::Rng;
 
 pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("Key::random", |b| {
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         b.iter(|| black_box(Key::random(&mut rng)))
     });
     c.bench_function("Key::random_non_weak", |b| {
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         b.iter(|| black_box(Key::random_non_weak(3, &mut rng)))
     });
     c.bench_function("syndrome", |b| {
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -33,7 +33,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("weight", |b| {
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -46,7 +46,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("bgf_decoder", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
         threshold_cache.precompute_all().expect("Must be able to compute thresholds");
         b.iter_batched_ref(
@@ -62,7 +62,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("upc", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        let mut rng = random::get_rng();
+        let (mut rng, _) = random::get_rng(None);
         let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
         threshold_cache.precompute_all().expect("Must be able to compute thresholds");
         b.iter_batched_ref(
@@ -81,17 +81,18 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         b.iter(|| black_box(threshold::ThresholdCache::with_parameters(r, d, t).precompute_all()))
     });
     c.bench_function("near_codeword", |b| {
+        let (mut rng_key, _) = random::get_rng(None);
+        let (mut rng_ncw, _) = random::get_rng(None);
         b.iter_batched_ref(
             || {
-                let mut rng = rand::thread_rng();
-                let key = Key::random(&mut rng);
-                let l = rng.gen_range(0..=BLOCK_WEIGHT);
-                (key, l, rng)
+                let key = Key::random(&mut rng_key);
+                let l = rng_key.gen_range(0..=BLOCK_WEIGHT);
+                (key, l)
             },
             |inputs| black_box((
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut inputs.2),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut inputs.2),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut inputs.2),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng_ncw),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng_ncw),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng_ncw),
             )),
             BatchSize::SmallInput
         )

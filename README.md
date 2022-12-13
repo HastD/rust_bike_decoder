@@ -44,6 +44,8 @@ Options:
           Max number of decoding failures recorded [default: 10000]
   -s, --savefreq <SAVEFREQ>
           Save to disk frequency [default only at end]
+      --seed <SEED>
+          Use the specified PRNG seed instead of a random seed
       --threads <THREADS>
           Number of threads [default: 1]
   -v, --verbose...

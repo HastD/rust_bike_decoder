@@ -1,6 +1,13 @@
-use rand_core::SeedableRng;
+use rand::{RngCore, SeedableRng, rngs::OsRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 
-pub fn get_rng() -> Xoshiro256PlusPlus {
-    Xoshiro256PlusPlus::from_entropy()
+pub type Seed = <Xoshiro256PlusPlus as SeedableRng>::Seed;
+
+pub fn get_rng(seed: Option<Seed>) -> (Xoshiro256PlusPlus, Seed) {
+    let seed = seed.unwrap_or_else(|| {
+        let mut seed = Seed::default();
+        OsRng.fill_bytes(&mut seed);
+        seed
+    });
+    (Xoshiro256PlusPlus::from_seed(seed), seed)
 }
