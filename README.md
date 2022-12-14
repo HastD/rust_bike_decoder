@@ -37,15 +37,15 @@ Options:
   -l, --ncw-overlap <NCW_OVERLAP>
           Overlap parameter l in A_{t,l}(S)
   -o, --output <OUTPUT>
-          Output file [default stdout]
+          Output file [default: stdout]
       --overwrite
           If output file already exists, overwrite without creating backup
   -r, --recordmax <RECORDMAX>
           Max number of decoding failures recorded [default: 10000]
   -s, --savefreq <SAVEFREQ>
-          Save to disk frequency [default only at end]
+          Save to disk frequency [default: only at end]
       --seed <SEED>
-          Use the specified PRNG seed instead of a random seed
+          Specify PRNG seed as 256-bit hex string [default: random]
       --threads <THREADS>
           Number of threads [default: 1]
   -v, --verbose...

@@ -40,15 +40,15 @@ pub struct Args {
     ncw: Option<NearCodewordClass>,
     #[arg(short='l',long,help="Overlap parameter l in A_{t,l}(S)",requires="ncw")]
     ncw_overlap: Option<usize>,
-    #[arg(short,long,help="Output file [default stdout]")]
+    #[arg(short,long,help="Output file [default: stdout]")]
     output: Option<String>,
     #[arg(long, help="If output file already exists, overwrite without creating backup")]
     overwrite: bool,
     #[arg(short,long,default_value_t=10000.0,help="Max number of decoding failures recorded")]
     recordmax: f64, // parsed as scientific notation to usize
-    #[arg(short,long,help="Save to disk frequency [default only at end]")]
+    #[arg(short,long,help="Save to disk frequency [default: only at end]")]
     savefreq: Option<f64>, // parsed as scientific notation to usize
-    #[arg(long, conflicts_with="threads", help="Use the specified PRNG seed instead of a random seed")]
+    #[arg(long, conflicts_with="threads", help="Specify PRNG seed as 256-bit hex string [default: random]")]
     seed: Option<String>,
     #[arg(long,default_value_t=1,help="Number of threads")]
     threads: usize,
@@ -133,7 +133,7 @@ impl Settings {
             record_max: args.recordmax as usize,
             verbose: args.verbose,
             seed: if let Some(seed_str) = args.seed {
-                serde_json::from_str(&seed_str)?
+                Some(seed_str.try_into()?)
             } else { None },
             thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
             output_file: args.output.map(PathBuf::from),
@@ -156,6 +156,8 @@ pub enum RuntimeError {
     DependencyError(String),
     #[error("error writing to file: {0}")]
     IOError(#[from] io::Error),
+    #[error("miscellaneous error: {0}")]
+    MiscError(#[from] anyhow::Error),
 }
 
 #[derive(Debug)]

@@ -243,7 +243,7 @@ impl DataRecord {
     pub fn update_thread_stats(&mut self, mut stats: ThreadStats) {
         let thread_id = stats.id();
         self.add_to_failure_count(stats.cached_failure_count);
-        stats.cached_failure_count = 0;
+        stats.reset_cached_failure_count();
         let thread_stats = self.thread_stats.as_mut()
             .expect("Can't record thread stats, not in multithreaded mode");
         thread_stats[thread_id] = stats;
