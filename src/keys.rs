@@ -62,9 +62,16 @@ impl Key {
         Ok(())
     }
 
+    #[inline]
     pub fn sort(&mut self) {
         self.h0.sort();
         self.h1.sort();
+    }
+
+    #[inline]
+    pub fn sorted(mut self) -> Self {
+        self.sort();
+        self
     }
 
     pub fn matches_filter(&self, key_filter: KeyFilter) -> bool {

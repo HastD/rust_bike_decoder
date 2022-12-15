@@ -49,8 +49,15 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Ok(())
     }
 
+    #[inline]
     pub fn sort(&mut self) {
         self.0.sort()
+    }
+
+    #[inline]
+    pub fn sorted(mut self) -> Self {
+        self.sort();
+        self
     }
 
     #[inline]
@@ -260,20 +267,14 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 impl<const W: usize, const L: usize> Serialize for SparseVector<W, L> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>
     {
-        let mut supp = self.0.clone();
-        supp.sort();
-        supp.serialize(serializer)
+        self.clone().sorted().0.serialize(serializer)
     }
 }
 
 impl<const W: usize, const L: usize> cmp::PartialEq for SparseVector<W, L> {
     // Supports may or may not be sorted, so we have to sort to test equality
     fn eq(&self, other: &Self) -> bool {
-        let mut supp_self = self.support().clone();
-        let mut supp_other = other.support().clone();
-        supp_self.sort();
-        supp_other.sort();
-        supp_self == supp_other
+        self.clone().sorted().0 == other.clone().sorted().0
     }
 }
 

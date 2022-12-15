@@ -11,7 +11,6 @@ use crate::{
 };
 use std::{
     cmp,
-    fmt::Display,
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -21,6 +20,7 @@ use std::{
 };
 use clap::Parser;
 use rand::Rng;
+use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -121,20 +121,13 @@ impl Settings {
                         "weak_key_filter must be in {-1, 0, 1, 2, 3}".to_string()));
                 }
             },
-            fixed_key: if let Some(fixed_key_str) = args.fixed_key {
-                let mut key: Key = serde_json::from_str(&fixed_key_str)?;
-                key.validate()?;
-                key.sort();
-                Some(key)
-            } else { None },
+            fixed_key: args.fixed_key.as_deref().map(serde_json::from_str).transpose()?.map(Key::sorted),
             ncw_class: args.ncw,
             ncw_overlap: args.ncw_overlap,
             save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
-            seed: if let Some(seed_str) = args.seed {
-                Some(seed_str.try_into()?)
-            } else { None },
+            seed: args.seed.map(Seed::try_from).transpose()?,
             thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,
@@ -240,12 +233,11 @@ fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<(), Run
     Ok(())
 }
 
-fn write_to_file_or_stdout(output: Option<&Path>, data: &impl Display) -> Result<(), RuntimeError> {
+fn write_json(output: Option<&Path>, data: &impl Serialize) -> Result<(), RuntimeError> {
     if let Some(filename) = output {
-        let mut file = File::create(filename)?;
-        file.write_all(&data.to_string().into_bytes())?;
+        serde_json::to_writer(File::create(filename)?, data)?;
     } else {
-        println!("{}", data);
+        println!("{}", serde_json::to_string(data)?);
     }
     Ok(())
 }
@@ -262,16 +254,10 @@ fn start_message(settings: &Settings) -> String
                 weak_type.number(), threshold)
         }
     };
-    let ncw_message = if let Some(ncw_class) = settings.ncw_class {
-        let l_str = if let Some(l) = settings.ncw_overlap {
-            l.to_string()
-        } else {
-            String::from("l")
-        };
+    let ncw_message = settings.ncw_class.map_or(String::new(), |ncw_class| {
+        let l_str = settings.ncw_overlap.map_or_else(|| "l".to_string(), |l| l.to_string());
         format!("    Sampling error vectors from A_{{t,{}}}({})\n", l_str, ncw_class)
-    } else {
-        String::new()
-    };
+    });
     let thread_message = if settings.thread_count > 1 {
         format!("[running with {} threads]\n", settings.thread_count)
     } else {
@@ -319,8 +305,8 @@ pub fn avx2_warning() {
 }
 
 pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
-    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
     let start_time = Instant::now();
+    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
     let (mut rng, seed) = crate::random::get_rng(settings.seed);
     data.record_seed(seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
@@ -342,7 +328,7 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
         if i != 0 && i % settings.save_frequency == 0 {
             data.set_runtime(start_time.elapsed());
             data.set_trials(i);
-            write_to_file_or_stdout(settings.output_file.as_deref(), &data)?;
+            write_json(settings.output_file.as_deref(), &data)?;
             if settings.verbose >= 2 {
                 println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                     data.failure_count(), i, data.runtime().as_secs_f64());
@@ -350,9 +336,9 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
         }
     }
     // Write final data
-    data.set_runtime(start_time.elapsed());
     data.set_trials(settings.number_of_trials);
-    write_to_file_or_stdout(settings.output_file.as_deref(), &data)?;
+    data.set_runtime(start_time.elapsed());
+    write_json(settings.output_file.as_deref(), &data)?;
     if settings.verbose >= 1 {
         println!("{}", end_message(data.failure_count(), data.trials(), start_time.elapsed()));
     }
@@ -360,8 +346,8 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
 }
 
 pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
-    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
     let start_time = Instant::now();
+    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
     // Set up (transmitter, receiver) pair and divide trials among threads
     let (tx, rx) = mpsc::channel();
     let trials_per_thread = settings.number_of_trials / settings.thread_count;
@@ -410,10 +396,14 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
                 }
                 data.update_thread_stats(stats);
                 data.set_runtime(start_time.elapsed());
-                write_to_file_or_stdout(settings.output_file.as_deref(), &data)?;
+                if settings.output_file.is_some() || settings.verbose >= 2 {
+                    write_json(settings.output_file.as_deref(), &data)?;
+                }
             }
         }
     }
+    data.set_runtime(start_time.elapsed());
+    write_json(settings.output_file.as_deref(), &data)?;
     if settings.verbose >= 1 {
         println!("{}", end_message(data.failure_count(), data.trials(), start_time.elapsed()));
     }

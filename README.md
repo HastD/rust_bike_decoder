@@ -63,18 +63,20 @@ The command-line program runs the following steps in a loop a number of times sp
 3. Compute the syndrome of the error vector.
 4. Use the BGF algorithm to attempt to decode the syndrome. Record any decoding failures.
 
-The program outputs the resulting data in JSON format, either to a file specified with the `-o` option or to `stdout`. (If the specified output file already exists, it will be backed up by appending a random UUID to the filename unless the `--overwrite` flag is provided.) Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. One particularly useful option for long-running trials is `-s`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
+The program outputs the resulting data in JSON format, either to a file specified with the `-o` option or to `stdout`. If the specified output file already exists and is nonempty, it will be backed up by appending a random UUID to the filename unless the `--overwrite` flag is provided. If the `-o` option is not provided and no verbose flags are given, the output to `stdout` will consist only of the JSON data and thus can be used with shell redirection operators (e.g. piping to another program that expects JSON input).
 
-Values for the `-N`, `-r`, and `-s` options can be given in scientific notation.
+Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. A useful option for long-running trials is `--savefreq`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
+
+Values for the `-N`, `--recordmax`, and `--savefreq` options can be given in scientific notation.
 
 The `--ncw` (or `-S`) option causes the error vectors to instead be generated from the sets of near-codewords `A_{t,l}(S)` described in Vasseur's thesis. The overlap `l` with the specified set `S` can be fixed with the `--ncw-overlap` (or `-l`) parameter; if omitted, the overlap parameter will be chosen at random with each iteration.
 
-## Example 
+## Examples
 
-To run 1 million trials (with random keys and random error vectors) and print the results in JSON format to the terminal:
+To run 1 million trials (with random keys and random error vectors) and print the results in JSON format to standard output:
 
 ```sh
-bike_decoder -N 1000000
+bike_decoder -N=1e6
 ```
 
 To run 100 million trials on non-weak keys only, with a weak key threshold of 4, saving the results to `results.json` every 1 million trials, using four threads and printing summary information at the beginning and end:
@@ -86,5 +88,5 @@ bike_decoder -N=1e8 -w=-1 -T=4 -o=results.json -s=1e6 --threads=4 -v
 To run 25 million trials with a given fixed key (replace `...` with the support of the key blocks as a comma-separated list), using error vectors in the near-codeword set `A_{t,7}(N)`, recording a maximum of 100 decoding failures (additional decoding failures will be counted but the vectors will not be recorded), printing full verbose output, and saving the results to `results.json` at the end:
 
 ```sh
-bike_decoder -N=2.5e7 --fixed-key='{"h0": [...], "h1": [...]}' --recordmax=100 -S=N -l=7 -v -v -v
+bike_decoder -N=2.5e7 -o=results.json --fixed-key='{"h0": [...], "h1": [...]}' --recordmax=100 -S=N -l=7 -v -v -v
 ```

@@ -5,11 +5,7 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub fn get_rng(seed: Option<Seed>) -> (Xoshiro256PlusPlus, Seed) {
-    let seed = seed.unwrap_or_else(|| {
-        let mut seed_data = SeedInner::default();
-        OsRng.fill_bytes(&mut seed_data);
-        Seed(seed_data)
-    });
+    let seed = seed.unwrap_or_else(Seed::from_entropy);
     (Xoshiro256PlusPlus::from_seed(seed.0), seed)
 }
 
@@ -17,6 +13,14 @@ type SeedInner = <Xoshiro256PlusPlus as SeedableRng>::Seed;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Seed(SeedInner);
+
+impl Seed {
+    pub fn from_entropy() -> Self {
+        let mut buf = SeedInner::default();
+        OsRng.fill_bytes(&mut buf);
+        Seed(buf)
+    }
+}
 
 impl TryFrom<String> for Seed {
     type Error = anyhow::Error;

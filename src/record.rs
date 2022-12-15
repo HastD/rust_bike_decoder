@@ -7,7 +7,6 @@ use crate::{
 };
 use std::{fmt, time::Duration};
 use serde::{Serialize, Deserialize};
-use serde_json::json;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DecodingResult {
@@ -54,12 +53,14 @@ pub struct DecodingFailureRecord {
 impl From<DecodingResult> for DecodingFailureRecord {
     fn from(result: DecodingResult) -> Self {
         let (key, e) = result.take_key_vector();
-        let (mut h0, mut h1) = key.take_blocks();
-        h0.sort();
-        h1.sort();
-        let (mut e_supp, e_source) = e.take_vector();
-        e_supp.sort();
-        Self { h0, h1, e_supp, e_source }
+        let (h0, h1) = key.take_blocks();
+        let (e_supp, e_source) = e.take_vector();
+        Self {
+            h0: h0.sorted(),
+            h1: h1.sorted(),
+            e_supp: e_supp.sorted(),
+            e_source
+        }
     }
 }
 
@@ -253,6 +254,6 @@ impl DataRecord {
 
 impl fmt::Display for DataRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", json!(self))
+        write!(f, "{}", serde_json::to_string(self).or(Err(fmt::Error))?)
     }
 }
