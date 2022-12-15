@@ -7,14 +7,14 @@ use crate::threshold::ThresholdCache;
 pub fn bgf_decoder(
     key: &Key,
     s: &mut Syndrome,
-    threshold_cache: &mut ThresholdCache
+    cache: &mut ThresholdCache
 ) -> (ErrorVector, bool) {
     let mut e_out = ErrorVector::zero();
     let mut ws = s.hamming_weight();
     let mut black = [[false; BLOCK_LENGTH]; 2];
     let mut gray = [[false; BLOCK_LENGTH]; 2];
     for iter_index in 0..NB_ITER {
-        let thr = threshold_cache.get(ws).expect("threshold should not be NaN");
+        let thr = cache.threshold(ws).expect("threshold should not be NaN");
         bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
         if iter_index == 0 {
             bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);
@@ -39,11 +39,11 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     {
         if std::arch::is_x86_feature_detected!("avx2") {
             fn truncate_buffer(buf: [u8; DOUBLE_SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
-                *<&[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
+                <[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
             }
             let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
-            multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
-            multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), BLOCK_WEIGHT, SIZE_AVX);
+            multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);
+            multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), SIZE_AVX);
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
         }
     }
@@ -114,27 +114,22 @@ fn multiply_avx2(
     output: &mut [u8],
     sparse: &[u32],
     dense: &[u8],
-    block_weight: usize,
     block_length: usize
 ) {
-    use safe_arch::{m256i, zeroed_m256i, add_i8_m256i};
+    use safe_arch::{zeroed_m256i, add_i8_m256i};
     const AVX_BUFF_LEN: usize = 8;
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
     for i in (0 .. block_length / 32).step_by(AVX_BUFF_LEN) {
         // reset buffer to zero
-        for k in 0..AVX_BUFF_LEN {
-            buffer[k] = zeroed_m256i();
-        }
-        for j in 0..block_weight {
-            // current location in sparse vector
-            let offset = sparse[j] as usize + 32*i;
+        buffer.iter_mut().for_each(|x| *x = zeroed_m256i());
+        for offset in sparse.iter().map(|idx| *idx as usize + 32*i) {
             for k in 0..AVX_BUFF_LEN {
                 // add offset block of dense vector to buffer
                 let dense_slice = &dense[offset+32*k..offset+32*k+32];
                 buffer[k] = add_i8_m256i(
                     buffer[k],
-                    m256i::from(*<&[u8; 32]>::try_from(dense_slice).unwrap())
+                    <[u8; 32]>::try_from(dense_slice).unwrap().into()
                 );
             }
         }

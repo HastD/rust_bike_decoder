@@ -92,7 +92,7 @@ impl ThresholdCache {
         }
     }
 
-    pub fn get(&mut self, ws: usize) -> Result<u8, &'static str> {
+    pub fn threshold(&mut self, ws: usize) -> Result<u8, &'static str> {
         self.x.get_or_insert_with(|| compute_x(self.r, self.d, self.t));
         *self.cache.entry(ws).or_insert_with(|| exact_threshold_ineq(ws, self.r, self.d, self.t, self.x))
     }
@@ -103,7 +103,7 @@ impl ThresholdCache {
 
     pub fn precompute_all(&mut self) -> Result<(), &'static str> {
         for ws in 0..self.r {
-            self.get(ws)?;
+            self.threshold(ws)?;
         }
         Ok(())
     }
@@ -118,7 +118,7 @@ mod tests {
         let (r, d, t) = (587, 15, 18);
         let mut cache = ThresholdCache::with_parameters(r, d, t);
         cache.cache.insert(42, Ok(127));
-        assert_eq!(cache.get(42).unwrap(), 127);
+        assert_eq!(cache.threshold(42).unwrap(), 127);
     }
 
     #[test]
@@ -151,7 +151,7 @@ mod tests {
         ];
         let mut cache = ThresholdCache::with_parameters(r, d, t);
         for ws in 0..r as usize {
-            let thresh = cache.get(ws).unwrap();
+            let thresh = cache.threshold(ws).unwrap();
             assert_eq!(thresh, cmp::max(thresholds_no_min[ws as usize], BF_THRESHOLD_MIN));
         }
     }
@@ -160,6 +160,6 @@ mod tests {
     fn invalid_threshold() {
         let (r, d, t) = (587, 15, 18);
         let mut cache = ThresholdCache::with_parameters(r, d, t);
-        assert!(cache.get(600).is_err());
+        assert!(cache.threshold(600).is_err());
     }
 }

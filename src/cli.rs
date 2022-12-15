@@ -1,5 +1,4 @@
 use crate::{
-    decoder,
     keys::{Key, KeyFilter, WeakType},
     ncw::{NearCodewordClass, TaggedErrorVector},
     parameters::*,
@@ -11,6 +10,7 @@ use crate::{
 };
 use std::{
     cmp,
+    convert::AsRef,
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -79,7 +79,7 @@ impl Settings {
 
     pub fn validate(&self) -> Result<(), RuntimeError> {
         if let Some(l) = self.ncw_overlap {
-            let sample_class = self.ncw_class.ok_or(RuntimeError::DependencyError(
+            let sample_class = self.ncw_class.ok_or_else(|| RuntimeError::DependencyError(
                 "ncw_overlap requires ncw_class to be set".to_string()))?;
             let l_max = sample_class.max_l();
             if l > l_max {
@@ -175,7 +175,7 @@ pub fn decoding_trial<R>(settings: &Settings, rng: &mut R, cache: &mut Threshold
     let e_supp = tagged_error_vector.vector();
     let e_in = e_supp.dense();
     let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.vector());
-    let (e_out, same_syndrome) = decoder::bgf_decoder(&key, &mut syn, cache);
+    let (e_out, same_syndrome) = crate::decoder::bgf_decoder(&key, &mut syn, cache);
     let success = e_in == e_out;
     assert!(same_syndrome || !success);
     DecodingResult::from(key, tagged_error_vector, success)
@@ -227,23 +227,26 @@ fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<(), Run
             // If file already exists and is nonempty, copy its contents to a backup file
             fs::copy(filename, &format!("{}-backup-{}", filename.display(), Uuid::new_v4()))?;
         }
-        let mut file = File::create(filename)?;
-        file.write_all(b"")?;
+        File::create(filename)?.write_all(b"")?;
     }
     Ok(())
 }
 
-fn write_json(output: Option<&Path>, data: &impl Serialize) -> Result<(), RuntimeError> {
+/// Serializes data in JSON format to the specified path, or to standard output if path not provided.
+fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<(), RuntimeError>
+    where P: AsRef<Path> + Copy
+{
     if let Some(filename) = output {
         serde_json::to_writer(File::create(filename)?, data)?;
+        File::options().append(true).open(filename)?.write_all(b"\n")?;
     } else {
-        println!("{}", serde_json::to_string(data)?);
+        serde_json::to_writer(io::stdout(), data)?;
+        io::stdout().write_all(b"\n")?;
     }
     Ok(())
 }
 
-fn start_message(settings: &Settings) -> String
-{
+fn start_message(settings: &Settings) -> String {
     let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
         BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
     let weak_key_message = match settings.key_filter {
@@ -288,7 +291,7 @@ fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration)
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
-pub fn avx2_warning() {
+fn avx2_warning() {
     // Warn if non-AVX2 fallback is used
     if !std::arch::is_x86_feature_detected!("avx2") {
         eprintln!("Warning: AVX2 not supported; falling back to slower method.");
