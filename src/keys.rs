@@ -194,6 +194,13 @@ pub enum KeyFilter {
     Weak(WeakType, usize),
 }
 
+impl Default for KeyFilter {
+    #[inline]
+    fn default() -> Self {
+        Self::Any
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

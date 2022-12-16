@@ -12,6 +12,7 @@ anyhow = "1.0.66"
 clap = { version = "4.0", features = ["derive"] }
 hex = { version = "0.4.3", features = ["serde"] }
 num = "0.4"
+num_cpus = "1.14"
 num-integer = "0.1"
 petgraph = "0.6"
 rand = "0.8"

@@ -1,173 +1,42 @@
 use crate::{
-    keys::{Key, KeyFilter, WeakType},
-    ncw::{NearCodewordClass, TaggedErrorVector},
+    error::RuntimeError,
+    keys::{Key, KeyFilter},
+    ncw::TaggedErrorVector,
     parameters::*,
-    random::Seed,
     record::{DecodingResult, ThreadStats, DataRecord},
+    settings::{Settings, TrialSettings},
     syndrome::Syndrome,
     threshold::ThresholdCache,
-    vectors::InvalidSupport,
 };
 use std::{
-    cmp,
     convert::AsRef,
     fs::{self, File},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::mpsc,
     time::{Duration, Instant},
     thread,
 };
-use clap::Parser;
 use rand::Rng;
 use serde::Serialize;
-use thiserror::Error;
 use uuid::Uuid;
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Args {
-    #[arg(short='N',long,help="Number of trials (required)")]
-    number: f64, // parsed as scientific notation to usize
-    #[arg(short, long, default_value_t=0, value_parser=clap::value_parser!(i8).range(-1..=3),
-        help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
-    weak_keys: i8,
-    #[arg(short='T',long,default_value_t=3,requires="weak_keys",help="Weak key threshold")]
-    weak_key_threshold: usize,
-    #[arg(long, help="Always use the specified key (in JSON format)")]
-    fixed_key: Option<String>,
-    #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)")]
-    ncw: Option<NearCodewordClass>,
-    #[arg(short='l',long,help="Overlap parameter l in A_{t,l}(S)",requires="ncw")]
-    ncw_overlap: Option<usize>,
-    #[arg(short,long,help="Output file [default: stdout]")]
-    output: Option<String>,
-    #[arg(long, help="If output file already exists, overwrite without creating backup")]
-    overwrite: bool,
-    #[arg(short,long,default_value_t=10000.0,help="Max number of decoding failures recorded")]
-    recordmax: f64, // parsed as scientific notation to usize
-    #[arg(short,long,help="Save to disk frequency [default: only at end]")]
-    savefreq: Option<f64>, // parsed as scientific notation to usize
-    #[arg(long, conflicts_with="threads", help="Specify PRNG seed as 256-bit hex string [default: random]")]
-    seed: Option<String>,
-    #[arg(long,default_value_t=1,help="Number of threads")]
-    threads: usize,
-    #[arg(short, long, action = clap::ArgAction::Count,
-        help="Print statistics and/or decoding failures [repeat for more verbose, max 3]")]
-    verbose: u8,
-}
-
-#[derive(Clone, Debug)]
-pub struct Settings {
-    number_of_trials: usize,
-    key_filter: KeyFilter,
-    fixed_key: Option<Key>,
-    ncw_class: Option<NearCodewordClass>,
-    ncw_overlap: Option<usize>,
-    save_frequency: usize,
-    record_max: usize,
-    verbose: u8,
-    seed: Option<Seed>,
-    thread_count: usize,
-    output_file: Option<PathBuf>,
-    overwrite: bool,
-}
-
-impl Settings {
-    const MIN_SAVE_FREQUENCY: usize = 10000;
-    const MAX_THREAD_COUNT: usize = 1024;
-
-    pub fn validate(&self) -> Result<(), RuntimeError> {
-        if let Some(l) = self.ncw_overlap {
-            let sample_class = self.ncw_class.ok_or_else(|| RuntimeError::DependencyError(
-                "ncw_overlap requires ncw_class to be set".to_string()))?;
-            let l_max = sample_class.max_l();
-            if l > l_max {
-                return Err(RuntimeError::RangeError(
-                    format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_class)));
-            }
-        }
-        if self.save_frequency < Self::MIN_SAVE_FREQUENCY {
-            return Err(RuntimeError::RangeError(
-                format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
-        } else if self.thread_count > Self::MAX_THREAD_COUNT {
-            return Err(RuntimeError::RangeError(
-                format!("thread_count must be <= {}", Self::MAX_THREAD_COUNT)));
-        } else if self.seed.is_some() && self.thread_count > 1 {
-            return Err(RuntimeError::DependencyError(
-                "seed can only be specified in single-threaded mode".to_string()));
-        }
-        if let Some(fixed_key) = &self.fixed_key {
-            fixed_key.validate()?;
-            if !fixed_key.matches_filter(self.key_filter) {
-                return Err(RuntimeError::DataError(InvalidSupport(
-                    "fixed_key does not match key filter".to_string())));
-            }
-        }
-        Ok(())
-    }
-
-    pub fn from_args(args: Args) -> Result<Self, RuntimeError> {
-        let settings = Self {
-            number_of_trials: args.number as usize,
-            key_filter: match args.weak_keys {
-                0 => KeyFilter::Any,
-                -1 => KeyFilter::NonWeak(args.weak_key_threshold),
-                1 => KeyFilter::Weak(WeakType::Type1, args.weak_key_threshold),
-                2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
-                3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
-                _ => {
-                    return Err(RuntimeError::RangeError(
-                        "weak_key_filter must be in {-1, 0, 1, 2, 3}".to_string()));
-                }
-            },
-            fixed_key: args.fixed_key.as_deref().map(serde_json::from_str).transpose()?.map(Key::sorted),
-            ncw_class: args.ncw,
-            ncw_overlap: args.ncw_overlap,
-            save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
-            record_max: args.recordmax as usize,
-            verbose: args.verbose,
-            seed: args.seed.map(Seed::try_from).transpose()?,
-            thread_count: cmp::min(cmp::max(args.threads, 1), Self::MAX_THREAD_COUNT),
-            output_file: args.output.map(PathBuf::from),
-            overwrite: args.overwrite,
-        };
-        settings.validate()?;
-        Ok(settings)
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum RuntimeError {
-    #[error("error parsing JSON for fixed_key argument: {0}")]
-    JsonError(#[from] serde_json::Error),
-    #[error("invalid support for vector or key: {0}")]
-    DataError(#[from] InvalidSupport),
-    #[error("argument outside of valid range: {0}")]
-    RangeError(String),
-    #[error("broken argument dependency: {0}")]
-    DependencyError(String),
-    #[error("error writing to file: {0}")]
-    IOError(#[from] io::Error),
-    #[error("miscellaneous error: {0}")]
-    MiscError(#[from] anyhow::Error),
-}
-
 #[derive(Debug)]
-pub enum DecoderMessage {
+pub enum TrialMessage {
     TrialResult(DecodingResult),
     Stats(ThreadStats),
+    CachedFailureCount(usize),
 }
 
-pub fn decoding_trial<R>(settings: &Settings, rng: &mut R, cache: &mut ThresholdCache)
+pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R, cache: &mut ThresholdCache)
     -> DecodingResult
     where R: Rng + ?Sized
 {
     // Use fixed_key if provided, otherwise generate random key using specified filter
-    let key = settings.fixed_key.clone()
-        .unwrap_or_else(|| Key::random_filtered(settings.key_filter, rng));
-    let tagged_error_vector = if let Some(ncw_class) = settings.ncw_class {
-        let l = settings.ncw_overlap.unwrap_or_else(|| rng.gen_range(0 ..= ncw_class.max_l()));
+    let key = settings.fixed_key().cloned()
+        .unwrap_or_else(|| Key::random_filtered(settings.key_filter(), rng));
+    let tagged_error_vector = if let Some(ncw_class) = settings.ncw_class() {
+        let l = settings.ncw_overlap().unwrap_or_else(|| rng.gen_range(0 ..= ncw_class.max_l()));
         TaggedErrorVector::near_codeword(&key, ncw_class, l, rng)
     } else {
         TaggedErrorVector::random(rng)
@@ -186,39 +55,104 @@ pub fn decoding_trial<R>(settings: &Settings, rng: &mut R, cache: &mut Threshold
 pub fn trial_loop_async(
     thread_id: usize,
     settings: Settings,
-    tx: mpsc::Sender<DecoderMessage>
+    tx: mpsc::Sender<TrialMessage>
 ) {
     let start_time = Instant::now();
-    let (mut rng, seed) = crate::random::get_rng(settings.seed);
+    let (mut rng, seed) = crate::random::get_rng(settings.seed());
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let mut stats = ThreadStats::new(thread_id);
     stats.set_seed(seed);
-    for i in 0..settings.number_of_trials {
-        let result = decoding_trial(&settings, &mut rng, &mut cache);
+    let mut cached_failure_count = 0;
+    for i in 0..settings.number_of_trials() {
+        let result = decoding_trial(&settings.trial_settings(), &mut rng, &mut cache);
         if !result.success() {
-            let will_record_failure = stats.failure_count() <= settings.record_max;
             // When many decoding failures are found, we cache decoding failure counts.
             // This prevents the main thread from being flooded with messages,
             // which can be a bottleneck in cases with a very high decoding failure rate.
-            stats.increment_failure_count(will_record_failure);
-            if will_record_failure {
-                let message = DecoderMessage::TrialResult(result);
-                tx.send(message).expect("Error transmitting decoding failure");
+            stats.increment_failure_count();
+            if stats.failure_count() <= settings.record_max() {
+                let message = TrialMessage::TrialResult(result);
+                tx.send(message).expect("Must be able to transmit decoding failure");
+            } else {
+                cached_failure_count += 1;
             }
         }
-        if i != 0 && i % settings.save_frequency == 0 {
+        if i % settings.save_frequency() == 0 && i != 0 {
+            if cached_failure_count > 0 {
+                let message = TrialMessage::CachedFailureCount(cached_failure_count);
+                tx.send(message).expect("Must be able to transmit cached failure count");
+                cached_failure_count = 0;
+            }
+            // Transmit thread statistics
             stats.set_trials(i);
             stats.set_runtime(start_time.elapsed());
-            let message = DecoderMessage::Stats(stats.clone());
-            tx.send(message).expect("Error transmitting thread stats");
-            stats.reset_cached_failure_count();
+            let message = TrialMessage::Stats(stats.clone());
+            tx.send(message).expect("Must be able to transmit thread stats");
         }
     }
-    stats.set_trials(settings.number_of_trials);
+    if cached_failure_count > 0 {
+        let message = TrialMessage::CachedFailureCount(cached_failure_count);
+        tx.send(message).expect("Must be able to transmit cached failure count");
+    }
+    stats.set_trials(settings.number_of_trials());
     stats.set_runtime(start_time.elapsed());
     stats.set_done(true);
-    let message = DecoderMessage::Stats(stats);
-    tx.send(message).expect("Error transmitting thread stats");
+    let message = TrialMessage::Stats(stats);
+    tx.send(message).expect("Must be able to transmit thread stats");
+}
+
+pub fn handle_decoding_failure(result: DecodingResult, data: &mut DataRecord, settings: &Settings) {
+    assert!(!result.success(), "handle_decoding_failure should only be called for decoding failures");
+    data.add_to_failure_count(1);
+    if data.failure_count() <= settings.record_max() {
+        if settings.verbose() >= 3 {
+            println!("Decoding failure found!");
+            println!("Key: {}\nError vector: {}", result.key(), result.vector());
+            if data.failure_count() == settings.record_max() {
+                println!("Maximum number of decoding failures recorded.");
+            }
+        }
+        data.push_decoding_failure(result.into());
+    }
+}
+
+pub fn handle_trial_message(
+    trial_result: TrialMessage,
+    data: &mut DataRecord,
+    settings: &Settings,
+    start_time: &Instant
+) -> Result<(), RuntimeError> {
+    match trial_result {
+        // If we receive a decoding failure, record it and increment the failure count
+        TrialMessage::TrialResult(result) => {
+            if !result.success() {
+                handle_decoding_failure(result, data, settings);
+            }
+        }
+        // If we receive a count of cached decoding failures, count those
+        TrialMessage::CachedFailureCount(count) => {
+            data.add_to_failure_count(count);
+        }
+        // If we receive updated thread statistics, record and save those
+        TrialMessage::Stats(stats) => {
+            if settings.verbose() >= 2 {
+                println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
+                    data.failure_count(), data.trials(), data.runtime().as_secs_f64());
+                if stats.done() {
+                    println!("\nThread {} done. Statistics:", stats.id());
+                    println!("    failure count: {}, trials: {}, runtime: {:.3}\n",
+                        stats.failure_count(), stats.trials(),
+                        stats.runtime().as_secs_f64());
+                }
+            }
+            data.update_thread_stats(stats);
+            data.set_runtime(start_time.elapsed());
+            if settings.output_file().is_some() || settings.verbose() >= 2 {
+                write_json(settings.output_file(), &data)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<(), RuntimeError> {
@@ -249,7 +183,7 @@ fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<(), Runtime
 fn start_message(settings: &Settings) -> String {
     let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
         BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
-    let weak_key_message = match settings.key_filter {
+    let weak_key_message = match settings.key_filter() {
         KeyFilter::Any => String::new(),
         KeyFilter::NonWeak(threshold) => format!("    Testing only non-weak keys (T = {})\n", threshold),
         KeyFilter::Weak(weak_type, threshold) => {
@@ -257,17 +191,17 @@ fn start_message(settings: &Settings) -> String {
                 weak_type.number(), threshold)
         }
     };
-    let ncw_message = settings.ncw_class.map_or(String::new(), |ncw_class| {
-        let l_str = settings.ncw_overlap.map_or_else(|| "l".to_string(), |l| l.to_string());
+    let ncw_message = settings.ncw_class().map_or(String::new(), |ncw_class| {
+        let l_str = settings.ncw_overlap().map_or_else(|| "l".to_string(), |l| l.to_string());
         format!("    Sampling error vectors from A_{{t,{}}}({})\n", l_str, ncw_class)
     });
-    let thread_message = if settings.thread_count > 1 {
-        format!("[running with {} threads]\n", settings.thread_count)
+    let thread_message = if settings.thread_count() > 1 {
+        format!("[running with {} threads]\n", settings.thread_count())
     } else {
         String::new()
     };
     format!("Starting decoding trials (N = {}) with parameters:\n{}{}{}{}",
-        settings.number_of_trials, parameter_message, weak_key_message, ncw_message, thread_message)
+        settings.number_of_trials(), parameter_message, weak_key_message, ncw_message, thread_message)
 }
 
 fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration) -> String {
@@ -309,40 +243,46 @@ fn avx2_warning() {
 
 pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     let start_time = Instant::now();
-    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
-    let (mut rng, seed) = crate::random::get_rng(settings.seed);
+    let mut data = DataRecord::new(settings.thread_count(), settings.key_filter(), settings.fixed_key().cloned());
+    let (mut rng, seed) = crate::random::get_rng(settings.seed());
     data.record_seed(seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
-    for i in 0..settings.number_of_trials {
-        let result = decoding_trial(&settings, &mut rng, &mut cache);
+    for i in 0..settings.number_of_trials() {
+        let result = decoding_trial(settings.trial_settings(), &mut rng, &mut cache);
         if !result.success() {
-            data.add_to_failure_count(1);
-            if data.failure_count() <= settings.record_max {
-                if settings.verbose >= 3 {
-                    println!("Decoding failure found!");
-                    println!("Key: {}\nError vector: {}", result.key(), result.vector());
-                    if data.failure_count() == settings.record_max {
-                        println!("Maximum number of decoding failures recorded.");
-                    }
-                }
-                data.push_decoding_failure(result.into());
-            }
+            handle_decoding_failure(result, &mut data, &settings);
         }
-        if i != 0 && i % settings.save_frequency == 0 {
+        if i % settings.save_frequency() == 0 && i != 0 {
             data.set_runtime(start_time.elapsed());
             data.set_trials(i);
-            write_json(settings.output_file.as_deref(), &data)?;
-            if settings.verbose >= 2 {
+            if settings.output_file().is_some() || settings.verbose() >= 2 {
+                write_json(settings.output_file(), &data)?;
+            }
+            if settings.verbose() >= 2 {
                 println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
                     data.failure_count(), i, data.runtime().as_secs_f64());
             }
         }
     }
     // Write final data
-    data.set_trials(settings.number_of_trials);
+    data.set_trials(settings.number_of_trials());
     data.set_runtime(start_time.elapsed());
-    write_json(settings.output_file.as_deref(), &data)?;
-    if settings.verbose >= 1 {
+    write_json(settings.output_file(), &data)?;
+    if settings.verbose() >= 1 {
+        println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
+    }
+    Ok(())
+}
+
+pub fn record_trial_results(rx: mpsc::Receiver<TrialMessage>, settings: Settings, start_time: Instant)
+-> Result<(), RuntimeError> {
+    let mut data = DataRecord::new(settings.thread_count(), settings.key_filter(), settings.fixed_key().cloned());
+    for received in rx {
+        handle_trial_message(received, &mut data, &settings, &start_time)?;
+    }
+    data.set_runtime(start_time.elapsed());
+    write_json(settings.output_file(), &data)?;
+    if settings.verbose() >= 1 {
         println!("{}", end_message(data.failure_count(), data.trials(), start_time.elapsed()));
     }
     Ok(())
@@ -350,76 +290,36 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
 
 pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     let start_time = Instant::now();
-    let mut data = DataRecord::new(settings.thread_count, settings.key_filter, settings.fixed_key.clone());
     // Set up (transmitter, receiver) pair and divide trials among threads
     let (tx, rx) = mpsc::channel();
-    let trials_per_thread = settings.number_of_trials / settings.thread_count;
-    let trials_remainder = settings.number_of_trials % settings.thread_count;
-    for thread_id in 0..settings.thread_count {
+    let settings_clone = settings.clone();
+    let handler_thread = thread::spawn(move ||
+        record_trial_results(rx, settings_clone, start_time)
+    );
+    let trials_per_thread = settings.number_of_trials() / settings.thread_count();
+    let trials_remainder = settings.number_of_trials() % settings.thread_count();
+    for thread_id in 0..settings.thread_count() {
         // Start the threads, passing them each a copy of the transmitter
         let tx_clone = tx.clone();
         let mut settings = settings.clone();
-        settings.number_of_trials = trials_per_thread + if thread_id == 0 { trials_remainder } else { 0 };
+        settings.set_number_of_trials(trials_per_thread + if thread_id == 0 { trials_remainder } else { 0 });
         thread::spawn(move || {
             trial_loop_async(thread_id, settings, tx_clone);
         });
     }
     // Drop original transmitter so rx will close when all threads finish
     drop(tx);
-    // Wait for messages
-    for received in rx {
-        match received {
-            // If we receive a decoding failure, record it and increment the failure count
-            DecoderMessage::TrialResult(result) => {
-                if !result.success() {
-                    data.add_to_failure_count(1);
-                    if data.failure_count() <= settings.record_max {
-                        if settings.verbose >= 3 {
-                            println!("Decoding failure found!");
-                            println!("Key: {}\nError vector: {}", result.key(), result.vector());
-                            if data.failure_count() == settings.record_max {
-                                println!("Maximum number of decoding failures recorded.");
-                            }
-                        }
-                        data.push_decoding_failure(result.into());
-                    }
-                }
-            }
-            // If we receive updated thread statistics, record and save those
-            DecoderMessage::Stats(stats) => {
-                if settings.verbose >= 2 {
-                    println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
-                        data.failure_count(), data.trials(), data.runtime().as_secs_f64());
-                    if stats.done() {
-                        println!("\nThread {} done. Statistics:", stats.id());
-                        println!("    failure count: {}, trials: {}, runtime: {:.3}\n",
-                            stats.failure_count(), stats.trials(),
-                            stats.runtime().as_secs_f64());
-                    }
-                }
-                data.update_thread_stats(stats);
-                data.set_runtime(start_time.elapsed());
-                if settings.output_file.is_some() || settings.verbose >= 2 {
-                    write_json(settings.output_file.as_deref(), &data)?;
-                }
-            }
-        }
-    }
-    data.set_runtime(start_time.elapsed());
-    write_json(settings.output_file.as_deref(), &data)?;
-    if settings.verbose >= 1 {
-        println!("{}", end_message(data.failure_count(), data.trials(), start_time.elapsed()));
-    }
-    Ok(())
+    // Wait for data processing to finish
+    handler_thread.join().expect("Recorder thread should not panic")
 }
 
 pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {
-    check_file_writable(settings.output_file.as_deref(), settings.overwrite)?;
+    check_file_writable(settings.output_file(), settings.overwrite())?;
     avx2_warning();
-    if settings.verbose >= 1 {
+    if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
     }
-    if settings.thread_count > 1 {
+    if settings.thread_count() > 1 {
         run_cli_multithreaded(settings)?;
     } else {
         run_cli_single_threaded(settings)?;

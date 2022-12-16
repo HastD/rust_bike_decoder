@@ -69,7 +69,6 @@ pub struct ThreadStats {
     thread_id: usize,
     seed: Option<Seed>,
     failure_count: usize,
-    #[serde(skip)] cached_failure_count: usize,
     trials: usize,
     runtime: Duration,
     done: bool,
@@ -81,7 +80,6 @@ impl ThreadStats {
             thread_id,
             seed: None,
             failure_count: 0,
-            cached_failure_count: 0,
             trials: 0,
             runtime: Duration::new(0, 0),
             done: false,
@@ -115,16 +113,8 @@ impl ThreadStats {
     }
 
     #[inline]
-    pub fn increment_failure_count(&mut self, recorded: bool) {
+    pub fn increment_failure_count(&mut self) {
         self.failure_count += 1;
-        if !recorded {
-            self.cached_failure_count += 1;
-        }
-    }
-
-    #[inline]
-    pub fn reset_cached_failure_count(&mut self) {
-        self.cached_failure_count = 0;
     }
 
     #[inline]
@@ -241,10 +231,8 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn update_thread_stats(&mut self, mut stats: ThreadStats) {
+    pub fn update_thread_stats(&mut self, stats: ThreadStats) {
         let thread_id = stats.id();
-        self.add_to_failure_count(stats.cached_failure_count);
-        stats.reset_cached_failure_count();
         let thread_stats = self.thread_stats.as_mut()
             .expect("Can't record thread stats, not in multithreaded mode");
         thread_stats[thread_id] = stats;

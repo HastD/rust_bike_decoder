@@ -47,7 +47,7 @@ Options:
       --seed <SEED>
           Specify PRNG seed as 256-bit hex string [default: random]
       --threads <THREADS>
-          Number of threads [default: 1]
+          Number of threads [default: one per core]
   -v, --verbose...
           Print statistics and/or decoding failures [repeat for more verbose, max 3]
   -h, --help

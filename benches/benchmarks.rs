@@ -1,17 +1,28 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BatchSize};
 use bike_decoder::{
+    cli,
     decoder,
     keys::Key,
     ncw::{TaggedErrorVector, NearCodewordClass},
     parameters::*,
     random,
+    settings::TrialSettings,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
-    threshold::{self, ThresholdCache},
+    threshold::ThresholdCache,
 };
+use std::hint::black_box;
+use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
 use rand::Rng;
 
 pub fn decoder_benchmarks(c: &mut Criterion) {
+    c.bench_function("decoding_trial", |b| {
+        let settings = TrialSettings::default();
+        let (mut rng, _) = random::get_rng(None);
+        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
+        let mut cache = ThresholdCache::with_parameters(r, d, t);
+        cache.precompute_all().expect("Must be able to compute thresholds");
+        b.iter(|| black_box(cli::decoding_trial(&settings, &mut rng, &mut cache)))
+    });
     c.bench_function("Key::random", |b| {
         let (mut rng, _) = random::get_rng(None);
         b.iter(|| black_box(Key::random(&mut rng)))
@@ -19,6 +30,23 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("Key::random_non_weak", |b| {
         let (mut rng, _) = random::get_rng(None);
         b.iter(|| black_box(Key::random_non_weak(3, &mut rng)))
+    });
+    c.bench_function("near_codeword", |b| {
+        let (mut rng_key, _) = random::get_rng(None);
+        let (mut rng_ncw, _) = random::get_rng(None);
+        b.iter_batched_ref(
+            || {
+                let key = Key::random(&mut rng_key);
+                let l = rng_key.gen_range(0..=BLOCK_WEIGHT);
+                (key, l)
+            },
+            |inputs| black_box((
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng_ncw),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng_ncw),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng_ncw),
+            )),
+            BatchSize::SmallInput
+        )
     });
     c.bench_function("syndrome", |b| {
         let (mut rng, _) = random::get_rng(None);
@@ -45,10 +73,10 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("bgf_decoder", |b| {
-        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         let (mut rng, _) = random::get_rng(None);
-        let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
-        threshold_cache.precompute_all().expect("Must be able to compute thresholds");
+        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
+        let mut cache = ThresholdCache::with_parameters(r, d, t);
+        cache.precompute_all().expect("Must be able to compute thresholds");
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -56,15 +84,12 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(decoder::bgf_decoder(&inputs.0, &mut inputs.1, &mut threshold_cache)),
+            |inputs| black_box(decoder::bgf_decoder(&inputs.0, &mut inputs.1, &mut cache)),
             BatchSize::SmallInput
         )
     });
     c.bench_function("upc", |b| {
-        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         let (mut rng, _) = random::get_rng(None);
-        let mut threshold_cache = ThresholdCache::with_parameters(r, d, t);
-        threshold_cache.precompute_all().expect("Must be able to compute thresholds");
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -78,24 +103,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        b.iter(|| black_box(threshold::ThresholdCache::with_parameters(r, d, t).precompute_all()))
-    });
-    c.bench_function("near_codeword", |b| {
-        let (mut rng_key, _) = random::get_rng(None);
-        let (mut rng_ncw, _) = random::get_rng(None);
-        b.iter_batched_ref(
-            || {
-                let key = Key::random(&mut rng_key);
-                let l = rng_key.gen_range(0..=BLOCK_WEIGHT);
-                (key, l)
-            },
-            |inputs| black_box((
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng_ncw),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng_ncw),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng_ncw),
-            )),
-            BatchSize::SmallInput
-        )
+        b.iter(|| black_box(ThresholdCache::with_parameters(r, d, t).precompute_all()))
     });
 }
 

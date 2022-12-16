@@ -41,6 +41,7 @@ dependencies = [
  "hex",
  "num",
  "num-integer",
+ "num_cpus",
  "petgraph",
  "rand",
  "rand_xoshiro",
