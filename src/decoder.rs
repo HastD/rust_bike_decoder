@@ -2,19 +2,15 @@ use crate::parameters::*;
 use crate::keys::Key;
 use crate::vectors::ErrorVector;
 use crate::syndrome::Syndrome;
-use crate::threshold::ThresholdCache;
+use crate::threshold::THRESHOLD_CACHE;
 
-pub fn bgf_decoder(
-    key: &Key,
-    s: &mut Syndrome,
-    cache: &mut ThresholdCache
-) -> (ErrorVector, bool) {
+pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     let mut e_out = ErrorVector::zero();
     let mut ws = s.hamming_weight();
     let mut black = [[false; BLOCK_LENGTH]; 2];
     let mut gray = [[false; BLOCK_LENGTH]; 2];
     for iter_index in 0..NB_ITER {
-        let thr = cache.threshold(ws).expect("threshold should not be NaN");
+        let thr = THRESHOLD_CACHE[ws];
         bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
         if iter_index == 0 {
             bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);

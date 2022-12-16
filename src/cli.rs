@@ -6,7 +6,6 @@ use crate::{
     record::{DecodingResult, ThreadStats, DataRecord},
     settings::{Settings, TrialSettings},
     syndrome::Syndrome,
-    threshold::ThresholdCache,
 };
 use std::{
     convert::AsRef,
@@ -28,7 +27,7 @@ pub enum TrialMessage {
     CachedFailureCount(usize),
 }
 
-pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R, cache: &mut ThresholdCache)
+pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R)
     -> DecodingResult
     where R: Rng + ?Sized
 {
@@ -44,7 +43,7 @@ pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R, cache: &mut Thre
     let e_supp = tagged_error_vector.vector();
     let e_in = e_supp.dense();
     let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.vector());
-    let (e_out, same_syndrome) = crate::decoder::bgf_decoder(&key, &mut syn, cache);
+    let (e_out, same_syndrome) = crate::decoder::bgf_decoder(&key, &mut syn);
     let success = e_in == e_out;
     assert!(same_syndrome || !success);
     DecodingResult::from(key, tagged_error_vector, success)
@@ -59,12 +58,11 @@ pub fn trial_loop_async(
 ) {
     let start_time = Instant::now();
     let (mut rng, seed) = crate::random::get_rng(settings.seed());
-    let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let mut stats = ThreadStats::new(thread_id);
     stats.set_seed(seed);
     let mut cached_failure_count = 0;
     for i in 0..settings.number_of_trials() {
-        let result = decoding_trial(&settings.trial_settings(), &mut rng, &mut cache);
+        let result = decoding_trial(&settings.trial_settings(), &mut rng);
         if !result.success() {
             // When many decoding failures are found, we cache decoding failure counts.
             // This prevents the main thread from being flooded with messages,
@@ -230,9 +228,8 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     let mut data = DataRecord::new(settings.threads(), settings.key_filter(), settings.fixed_key().cloned());
     let (mut rng, seed) = crate::random::get_rng(settings.seed());
     data.record_seed(seed);
-    let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
     for i in 0..settings.number_of_trials() {
-        let result = decoding_trial(settings.trial_settings(), &mut rng, &mut cache);
+        let result = decoding_trial(settings.trial_settings(), &mut rng);
         if !result.success() {
             handle_decoding_failure(result, &mut data, &settings);
         }
@@ -259,17 +256,14 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
 }
 
 pub fn record_trial_results(rx: mpsc::Receiver<TrialMessage>, settings: Settings, start_time: Instant)
--> Result<(), RuntimeError> {
+-> Result<(usize, usize, Duration), RuntimeError> {
     let mut data = DataRecord::new(settings.threads(), settings.key_filter(), settings.fixed_key().cloned());
     for received in rx {
         handle_trial_message(received, &mut data, &settings, &start_time)?;
     }
     data.set_runtime(start_time.elapsed());
     write_json(settings.output_file(), &data)?;
-    if settings.verbose() >= 1 {
-        println!("{}", end_message(data.failure_count(), data.trials(), start_time.elapsed()));
-    }
-    Ok(())
+    Ok((data.failure_count(), data.trials(), start_time.elapsed()))
 }
 
 pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
@@ -294,7 +288,12 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     // Drop original transmitter so rx will close when all threads finish
     drop(tx);
     // Wait for data processing to finish
-    handler_thread.join().expect("Recorder thread should not panic")
+    let (failure_count, trials, runtime) = handler_thread.join()
+        .expect("Recorder thread should not panic")?;
+    if settings.verbose() >= 1 {
+        println!("{}", end_message(failure_count, trials, runtime));
+    }
+    Ok(())
 }
 
 pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {

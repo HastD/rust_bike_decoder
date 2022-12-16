@@ -1,14 +1,24 @@
-use crate::parameters::BF_THRESHOLD_MIN;
+use crate::parameters::*;
+use lazy_static::lazy_static;
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
-use rustc_hash::FxHashMap;
 use std::cmp;
+
+lazy_static! {
+    pub static ref THRESHOLD_CACHE: Vec<u8> = {
+        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
+        let x = compute_x(r, d, t);
+        (0..=BLOCK_LENGTH).map(
+            |ws| exact_threshold_ineq(ws, r, d, t, Some(x)).expect("Must be able to compute thresholds")
+        ).collect()
+    };
+}
 
 fn big_binomial(n: usize, k: usize) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
 }
 
-fn compute_x(r: usize, d: usize, t: usize) -> f64 {
+pub fn compute_x(r: usize, d: usize, t: usize) -> f64 {
     let n = 2*r;
     let w = 2*d;
     let n_minus_w = n - w;
@@ -44,7 +54,7 @@ pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f
         if threshold < u8::MAX as i32 {
             threshold = threshold.wrapping_add(1);
         } else {
-            return Err("Threshold exceeds maximum supported value");
+            return Err("Threshold should not exceed maximum supported value");
         }
     }
     let threshold = cmp::max(threshold as u8, BF_THRESHOLD_MIN);
@@ -64,62 +74,18 @@ pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>) 
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
     let thresh_den = (pi1 / pi0).log2() + log_frac;
     let threshold = (thresh_num / thresh_den).ceil();
-    if threshold.is_nan() { Err("Invalid threshold (NaN) computed") } else {
+    if threshold.is_nan() { Err("Threshold should not be NaN") } else {
         let threshold = <u8>::try_from(threshold as u32)
-            .or(Err("Threshold exceeds maximum supported value"))?;
+            .or(Err("Threshold should not exceed maximum supported value"))?;
         // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
         let threshold = cmp::max(threshold, BF_THRESHOLD_MIN);
         Ok(threshold)
     }
 }
 
-#[derive(Debug)]
-pub struct ThresholdCache {
-    cache: FxHashMap<usize, Result<u8, &'static str>>,
-    pub r: usize,
-    pub d: usize,
-    pub t: usize,
-    x: Option<f64>,
-}
-
-impl ThresholdCache {
-    pub fn with_parameters(r: usize, d: usize, t: usize) -> Self {
-        assert!(d < r && t < 2*r);
-        Self {
-            cache: FxHashMap::default(),
-            r, d, t,
-            x: None,
-        }
-    }
-
-    pub fn threshold(&mut self, ws: usize) -> Result<u8, &'static str> {
-        self.x.get_or_insert_with(|| compute_x(self.r, self.d, self.t));
-        *self.cache.entry(ws).or_insert_with(|| exact_threshold_ineq(ws, self.r, self.d, self.t, self.x))
-    }
-
-    pub fn is_computed(&self, ws: &usize) -> bool {
-        self.cache.contains_key(ws)
-    }
-
-    pub fn precompute_all(&mut self) -> Result<(), &'static str> {
-        for ws in 0..self.r {
-            self.threshold(ws)?;
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn retrieve_cached() {
-        let (r, d, t) = (587, 15, 18);
-        let mut cache = ThresholdCache::with_parameters(r, d, t);
-        cache.cache.insert(42, Ok(127));
-        assert_eq!(cache.threshold(42).unwrap(), 127);
-    }
 
     #[test]
     fn known_x() {
@@ -132,6 +98,7 @@ mod tests {
     #[test]
     fn known_thresholds() {
         let (r, d, t) = (587, 15, 18);
+        assert_eq!((r, d, t), (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT));
         let thresholds_no_min = [
             1,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,
             6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
@@ -147,19 +114,13 @@ mod tests {
             1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
             1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
             1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
         ];
-        let mut cache = ThresholdCache::with_parameters(r, d, t);
-        for ws in 0..r as usize {
-            let thresh = cache.threshold(ws).unwrap();
+        let x = compute_x(r, d, t);
+        for ws in 0..=r as usize {
+            let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
             assert_eq!(thresh, cmp::max(thresholds_no_min[ws as usize], BF_THRESHOLD_MIN));
+            assert_eq!(thresh, THRESHOLD_CACHE[ws]);
         }
-    }
-
-    #[test]
-    fn invalid_threshold() {
-        let (r, d, t) = (587, 15, 18);
-        let mut cache = ThresholdCache::with_parameters(r, d, t);
-        assert!(cache.threshold(600).is_err());
     }
 }

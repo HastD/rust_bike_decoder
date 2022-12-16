@@ -8,7 +8,7 @@ use bike_decoder::{
     settings::TrialSettings,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
-    threshold::ThresholdCache,
+    threshold,
 };
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
@@ -18,10 +18,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("decoding_trial", |b| {
         let settings = TrialSettings::default();
         let (mut rng, _) = random::get_rng(None);
-        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        let mut cache = ThresholdCache::with_parameters(r, d, t);
-        cache.precompute_all().expect("Must be able to compute thresholds");
-        b.iter(|| black_box(cli::decoding_trial(&settings, &mut rng, &mut cache)))
+        b.iter(|| black_box(cli::decoding_trial(&settings, &mut rng)))
     });
     c.bench_function("Key::random", |b| {
         let (mut rng, _) = random::get_rng(None);
@@ -74,9 +71,6 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("bgf_decoder", |b| {
         let (mut rng, _) = random::get_rng(None);
-        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        let mut cache = ThresholdCache::with_parameters(r, d, t);
-        cache.precompute_all().expect("Must be able to compute thresholds");
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -84,7 +78,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(decoder::bgf_decoder(&inputs.0, &mut inputs.1, &mut cache)),
+            |inputs| black_box(decoder::bgf_decoder(&inputs.0, &mut inputs.1)),
             BatchSize::SmallInput
         )
     });
@@ -103,7 +97,12 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        b.iter(|| black_box(ThresholdCache::with_parameters(r, d, t).precompute_all()))
+        b.iter(|| {
+            let x = threshold::compute_x(r, d, t);
+            for ws in 0..=r as usize {
+                black_box(threshold::exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
+            }
+        })
     });
 }
 
