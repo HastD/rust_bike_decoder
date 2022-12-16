@@ -66,7 +66,7 @@ impl From<DecodingResult> for DecodingFailureRecord {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ThreadStats {
-    thread_id: usize,
+    id: usize,
     seed: Option<Seed>,
     failure_count: usize,
     trials: usize,
@@ -75,9 +75,9 @@ pub struct ThreadStats {
 }
 
 impl ThreadStats {
-    pub fn new(thread_id: usize) -> Self {
+    pub fn new(id: usize) -> Self {
         Self {
-            thread_id,
+            id,
             seed: None,
             failure_count: 0,
             trials: 0,
@@ -98,7 +98,7 @@ impl ThreadStats {
 
     #[inline]
     pub fn id(&self) -> usize {
-        self.thread_id
+        self.id
     }
 
     #[inline]
@@ -232,10 +232,10 @@ impl DataRecord {
 
     #[inline]
     pub fn update_thread_stats(&mut self, stats: ThreadStats) {
-        let thread_id = stats.id();
+        let id = stats.id();
         let thread_stats = self.thread_stats.as_mut()
             .expect("Can't record thread stats, not in multithreaded mode");
-        thread_stats[thread_id] = stats;
+        thread_stats[id] = stats;
         self.trials = thread_stats.iter().map(|stats| stats.trials).sum();
     }
 }

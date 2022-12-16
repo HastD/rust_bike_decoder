@@ -4,7 +4,7 @@ This is a Rust implementation of the BGF decoding algorithm for QC-MDPC codes, w
 
 This implementation is intended as a research tool for investigating decoding failures and error floor phenomena in QC-MDPC codes; it is **not** designed to be cryptographically secure and does not follow all aspects of the BIKE specification. For an optimized implementation of the BIKE specification intended for cryptographic use, see [this constant-time software implementation](https://github.com/awslabs/bike-kem).
 
-For a C implementation of BGF and several other decoding algorithms, see Valentin Vasseur's [qcmdpc_decoder](https://github.com/vvasseur/qcmdpc_decoder). A key optimization in this code—the use of AVX2 instructions to speed up the inner loop of the bit-flipping algorithms by computing parity checks in parallel—is a direct Rust port of part of Vasseur's implementation.
+For a C implementation of BGF and several other decoding algorithms, see Valentin Vasseur's [qcmdpc_decoder](https://github.com/vvasseur/qcmdpc_decoder). An optimization in this code—the use of AVX2 instructions to speed up the inner loop of the bit-flipping algorithms by computing parity checks in parallel—is a direct Rust port of part of Vasseur's implementation.
 
 ## Compiling
 
@@ -15,8 +15,6 @@ cargo build --release
 ```
 
 Compile-time parameters such as the block size and weight, the error vector weight, and the number of iterations in the BGF algorithm can be set in `src/parameters.rs`. The executable will be generated at `target/release/bike_decoder`.
-
-By default, the program is built assuming your CPU supports the AVX2 instruction set. If this is not the case, remove the `rustflags` line in `.cargo/config.toml` before compiling; however, be aware that this program will run much more slowly without AVX2.
 
 ## Usage
 
@@ -40,6 +38,8 @@ Options:
           Output file [default: stdout]
       --overwrite
           If output file already exists, overwrite without creating backup
+      --parallel
+          Run in parallel with automatically chosen number of threads
   -r, --recordmax <RECORDMAX>
           Max number of decoding failures recorded [default: 10000]
   -s, --savefreq <SAVEFREQ>
@@ -47,7 +47,7 @@ Options:
       --seed <SEED>
           Specify PRNG seed as 256-bit hex string [default: random]
       --threads <THREADS>
-          Number of threads [default: one per core]
+          Set number of threads (ignores --parallel)
   -v, --verbose...
           Print statistics and/or decoding failures [repeat for more verbose, max 3]
   -h, --help

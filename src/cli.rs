@@ -195,8 +195,8 @@ fn start_message(settings: &Settings) -> String {
         let l_str = settings.ncw_overlap().map_or_else(|| "l".to_string(), |l| l.to_string());
         format!("    Sampling error vectors from A_{{t,{}}}({})\n", l_str, ncw_class)
     });
-    let thread_message = if settings.thread_count() > 1 {
-        format!("[running with {} threads]\n", settings.thread_count())
+    let thread_message = if settings.parallel() {
+        format!("[running with {} threads]\n", settings.threads())
     } else {
         String::new()
     };
@@ -225,25 +225,9 @@ fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration)
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
-fn avx2_warning() {
-    // Warn if non-AVX2 fallback is used
-    if !std::arch::is_x86_feature_detected!("avx2") {
-        eprintln!("Warning: AVX2 not supported; falling back to slower method.");
-    }
-    #[cfg(not(all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        target_feature = "avx2"
-    )))]
-    {
-        if std::arch::is_x86_feature_detected!("avx2") {
-            eprintln!("Warning: binary compiled without AVX2 feature; falling back to slower method.");
-        }
-    }
-}
-
 pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     let start_time = Instant::now();
-    let mut data = DataRecord::new(settings.thread_count(), settings.key_filter(), settings.fixed_key().cloned());
+    let mut data = DataRecord::new(settings.threads(), settings.key_filter(), settings.fixed_key().cloned());
     let (mut rng, seed) = crate::random::get_rng(settings.seed());
     data.record_seed(seed);
     let mut cache = ThresholdCache::with_parameters(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);    
@@ -276,7 +260,7 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
 
 pub fn record_trial_results(rx: mpsc::Receiver<TrialMessage>, settings: Settings, start_time: Instant)
 -> Result<(), RuntimeError> {
-    let mut data = DataRecord::new(settings.thread_count(), settings.key_filter(), settings.fixed_key().cloned());
+    let mut data = DataRecord::new(settings.threads(), settings.key_filter(), settings.fixed_key().cloned());
     for received in rx {
         handle_trial_message(received, &mut data, &settings, &start_time)?;
     }
@@ -296,15 +280,15 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     let handler_thread = thread::spawn(move ||
         record_trial_results(rx, settings_clone, start_time)
     );
-    let trials_per_thread = settings.number_of_trials() / settings.thread_count();
-    let trials_remainder = settings.number_of_trials() % settings.thread_count();
-    for thread_id in 0..settings.thread_count() {
+    let trials_per_thread = settings.number_of_trials() / settings.threads();
+    let trials_remainder = settings.number_of_trials() % settings.threads();
+    for thread_id in 0..settings.threads() {
         // Start the threads, passing them each a copy of the transmitter
-        let tx_clone = tx.clone();
+        let tx = tx.clone();
         let mut settings = settings.clone();
         settings.set_number_of_trials(trials_per_thread + if thread_id == 0 { trials_remainder } else { 0 });
         thread::spawn(move || {
-            trial_loop_async(thread_id, settings, tx_clone);
+            trial_loop_async(thread_id, settings, tx);
         });
     }
     // Drop original transmitter so rx will close when all threads finish
@@ -315,11 +299,10 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
 
 pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {
     check_file_writable(settings.output_file(), settings.overwrite())?;
-    avx2_warning();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
     }
-    if settings.thread_count() > 1 {
+    if settings.parallel() {
         run_cli_multithreaded(settings)?;
     } else {
         run_cli_single_threaded(settings)?;

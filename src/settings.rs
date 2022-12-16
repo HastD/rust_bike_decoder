@@ -31,13 +31,16 @@ pub struct Args {
     output: Option<String>,
     #[arg(long, help="If output file already exists, overwrite without creating backup")]
     overwrite: bool,
+    #[arg(long, help="Run in parallel with automatically chosen number of threads")]
+    parallel: bool,
     #[arg(short,long,default_value_t=10000.0,help="Max number of decoding failures recorded")]
     recordmax: f64, // parsed as scientific notation to usize
     #[arg(short,long,help="Save to disk frequency [default: only at end]")]
     savefreq: Option<f64>, // parsed as scientific notation to usize
-    #[arg(long, conflicts_with="threads", help="Specify PRNG seed as 256-bit hex string [default: random]")]
+    #[arg(long, conflicts_with_all=["parallel", "threads"],
+        help="Specify PRNG seed as 256-bit hex string [default: random]")]
     seed: Option<String>,
-    #[arg(long, help="Number of threads [default: one per core]")]
+    #[arg(long, help="Set number of threads (ignores --parallel)")]
     threads: Option<usize>,
     #[arg(short, long, action = clap::ArgAction::Count,
         help="Print statistics and/or decoding failures [repeat for more verbose, max 3]")]
@@ -52,7 +55,7 @@ pub struct Settings {
     record_max: usize,
     verbose: u8,
     seed: Option<Seed>,
-    thread_count: usize,
+    threads: usize,
     output_file: Option<PathBuf>,
     overwrite: bool,
 }
@@ -117,8 +120,13 @@ impl Settings {
     }
 
     #[inline]
-    pub fn thread_count(&self) -> usize {
-        self.thread_count
+    pub fn parallel(&self) -> bool {
+        self.threads != 1
+    }
+
+    #[inline]
+    pub fn threads(&self) -> usize {
+        self.threads
     }
 
     #[inline]
@@ -135,10 +143,10 @@ impl Settings {
         if self.save_frequency < Self::MIN_SAVE_FREQUENCY {
             return Err(RuntimeError::RangeError(
                 format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
-        } else if self.thread_count > Self::MAX_THREAD_COUNT {
+        } else if self.threads > Self::MAX_THREAD_COUNT {
             return Err(RuntimeError::RangeError(
-                format!("thread_count must be <= {}", Self::MAX_THREAD_COUNT)));
-        } else if self.seed.is_some() && self.thread_count > 1 {
+                format!("threads must be <= {}", Self::MAX_THREAD_COUNT)));
+        } else if self.seed.is_some() && self.parallel() {
             return Err(RuntimeError::DependencyError(
                 "seed can only be specified in single-threaded mode".to_string()));
         }
@@ -168,7 +176,8 @@ impl Settings {
             record_max: args.recordmax as usize,
             verbose: args.verbose,
             seed: args.seed.map(Seed::try_from).transpose()?,
-            thread_count: args.threads.map_or_else(|| num_cpus::get_physical(),
+            threads: args.threads.map_or_else(
+                || if args.parallel { num_cpus::get_physical() } else { 1 },
                 |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,

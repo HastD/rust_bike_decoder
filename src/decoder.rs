@@ -52,7 +52,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
         for i in 0..BLOCK_LENGTH {
             for &j in h_supp[k] {
                 // If i + j >= BLOCK_LENGTH, this wraps around because we duplicated s
-                upc[k][i] += s.get(i.wrapping_add(j as usize));
+                upc[k][i] += s.get(i + j as usize);
             }
         }
     }
