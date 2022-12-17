@@ -7,47 +7,51 @@ use std::{
     cell::UnsafeCell,
     convert::TryFrom,
     rc::Rc,
-    sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}},
+    sync::{Mutex, atomic::{AtomicUsize, Ordering}},
     thread_local,
 };
-use anyhow::Context;
 use lazy_static::lazy_static;
 use rand::{RngCore, Error, SeedableRng, rngs::OsRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use thiserror::Error;
 
 lazy_static! {
-    static ref SEED: Arc<Mutex<Option<Seed>>> = Arc::new(Mutex::new(None));
-    static ref JUMP_COUNTER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    static ref GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
+    static ref GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 }
 
 pub fn global_seed() -> Option<Seed> {
-    *SEED.lock().expect("Must be able to access global seed")
+    *GLOBAL_SEED.lock().expect("Must be able to access global seed")
 }
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
-    let mut global_seed = SEED.lock().expect("Must be able to access global seed");
+    let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
     *global_seed.get_or_insert(seed.unwrap_or_else(|| Seed::from_entropy()))
 }
 
+pub fn global_thread_count() -> usize {
+    GLOBAL_THREAD_COUNT.load(Ordering::SeqCst)
+}
+
 thread_local! {
-    pub static JUMPS: usize = JUMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+    pub static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
     static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
         let seed = get_or_insert_global_seed(None);
         let mut rng = Xoshiro256PlusPlus::from_seed(seed.0);
-        for _ in 0..JUMPS.with(|x| *x) {
+        for _ in 0..CURRENT_THREAD_ID.with(|x| *x) {
             rng.jump();
         }
         Rc::new(UnsafeCell::new(rng))
     }
 }
 
+/// Generates a thread-local PRNG that uses Xoshiro256PlusPlus as the core,
+/// seeded with GLOBAL_SEED, with a number of jumps equal to CURRENT_THREAD_ID.
+/// This allows for fast pseudorandom number generation across multiple threads
+/// with fully reproducible results given GLOBAL_SEED.
 pub fn custom_thread_rng() -> CustomThreadRng {
     CustomThreadRng { rng: CUSTOM_THREAD_RNG_KEY.with(|t| t.clone()) }
-}
-
-pub fn jump_count() -> usize {
-    JUMP_COUNTER.load(Ordering::SeqCst)
 }
 
 // Note: Debug implementation intentionally leaks internal state.
@@ -108,11 +112,11 @@ impl Seed {
 }
 
 impl TryFrom<String> for Seed {
-    type Error = anyhow::Error;
+    type Error = SeedFromHexError;
 
-    fn try_from(value: String) -> anyhow::Result<Self> {
-        let bytes = hex::decode(value).context("Failed to decode hex string into byte array")?;
-        let arr = SeedInner::try_from(&bytes[..]).context("PRNG seed must be 256 bits")?;
+    fn try_from(value: String) -> Result<Self, SeedFromHexError> {
+        let bytes = hex::decode(value)?;
+        let arr = SeedInner::try_from(&bytes[..])?;
         Ok(Self(arr))
     }
 }
@@ -131,4 +135,12 @@ impl Serialize for Seed {
     {
         hex::serde::serialize(self.0, serializer)
     }
+}
+
+#[derive(Debug, Error)]
+pub enum SeedFromHexError {
+    #[error("failed to decode hex string: {0}")]
+    HexDecodeError(#[from] hex::FromHexError),
+    #[error("PRNG seed must be 256 bits: {0}")]
+    SizeError(#[from] std::array::TryFromSliceError),
 }

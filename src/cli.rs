@@ -3,7 +3,7 @@ use crate::{
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
-    random::JUMPS,
+    random::CURRENT_THREAD_ID,
     record::{DecodingResult, DecodingFailureRecord, DataRecord},
     settings::{Settings, TrialSettings},
     syndrome::Syndrome,
@@ -50,18 +50,18 @@ pub fn trial_iteration(settings: &TrialSettings, tx: &mpsc::Sender<(DecodingResu
     } else {
         // Attempt to send decoding failure, but ignore errors, as the receiver may
         // choose to hang up after receiving the maximum number of decoding failures.
-        tx.send((result, JUMPS.with(|x| *x))).ok();
+        tx.send((result, CURRENT_THREAD_ID.with(|x| *x))).ok();
         1
     }
 }
 
 // Runs decoding_trial in a loop, sending decoding failures via tx_results and
 // progress updates (counts of decoding failures and trials run) via tx_progress.
-pub fn trial_loop(
+pub fn trial_loop_parallel(
     settings: &Settings,
     tx_progress: mpsc::Sender<(usize, usize)>,
     tx_results: mpsc::Sender<(DecodingResult, usize)>,
-) {
+) -> Result<(), mpsc::SendError<(usize, usize)>> {
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
@@ -70,9 +70,10 @@ pub fn trial_loop(
             (settings.trial_settings(), tx_results),
             |(settings, tx), _| trial_iteration(&settings, &tx)
         ).sum();
-        tx_progress.send((new_failure_count, new_trials)).expect("Must be able to transmit progress");
+        tx_progress.send((new_failure_count, new_trials))?;
         trials_remaining -= new_trials;
     }
+    Ok(())
 }
 
 fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<(), RuntimeError> {
@@ -184,7 +185,7 @@ pub fn record_trial_results(
     start_time: Instant
 ) -> Result<(usize, usize, Duration), RuntimeError> {
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    data.set_seed(crate::random::global_seed().expect("Global seed should be set"));
+    data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
     'outer: loop {
         for (result, thread) in rx_results.try_iter() {
             if !result.success() {
@@ -227,17 +228,18 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     // Set global PRNG seed used for generating data
     crate::random::get_or_insert_global_seed(settings.seed());
     rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build_global()?;
-    // Set up (transmitter, receiver) pair and divide trials among threads
-    let (tx_progress, rx_progress) = mpsc::channel();
+    // Set up channels to receive decoding results and progress updates
     let (tx_results, rx_results) = mpsc::channel();
+    let (tx_progress, rx_progress) = mpsc::channel();
     let settings_clone = settings.clone();
     let handler_thread = thread::spawn(move ||
         record_trial_results(rx_progress, rx_results, settings_clone, start_time)
     );
-    trial_loop(&settings, tx_progress, tx_results);
+    trial_loop_parallel(&settings, tx_progress, tx_results)?;
     // Wait for data processing to finish
     let (failure_count, trials, runtime) = handler_thread.join()
-        .expect("Recorder thread should not panic")?;
+        // If join() failed, propagate the panic from the thread
+        .unwrap_or_else(|err| std::panic::resume_unwind(err))?;
     if settings.verbose() >= 1 {
         println!("{}", end_message(failure_count, trials, runtime));
     }
@@ -250,11 +252,12 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
         println!("{}", start_message(&settings));
     }
     check_file_writable(settings.output_file(), settings.overwrite())?;
+    // Initialize object storing data to be recorded
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
     // Set global PRNG seed used for generating data
     data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
     // This will normally be zero but could differ if run inside a threaded application
-    let thread_id = JUMPS.with(|x| *x);
+    let thread_id = CURRENT_THREAD_ID.with(|x| *x);
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let mut new_failure_count = 0;

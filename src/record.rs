@@ -102,7 +102,7 @@ impl DataRecord {
             decoding_failures: Vec::new(),
             seed: None,
             runtime: Duration::new(0, 0),
-            thread_count: crate::random::jump_count(),
+            thread_count: crate::random::global_thread_count(),
         }
     }
 
@@ -165,7 +165,7 @@ impl DataRecord {
 
     #[inline]
     pub fn update_thread_count(&mut self) {
-        self.thread_count = crate::random::jump_count();
+        self.thread_count = crate::random::global_thread_count();
     }
 }
 

@@ -1,3 +1,4 @@
+use std::{io, sync::mpsc};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -8,12 +9,16 @@ pub enum RuntimeError {
     DataError(#[from] crate::vectors::InvalidSupport),
     #[error("argument outside of valid range: {0}")]
     RangeError(String),
+    #[error("threshold computation error: {0}")]
+    ThresholdError(#[from] crate::threshold::ThresholdError),
     #[error("broken argument dependency: {0}")]
     DependencyError(String),
     #[error("error writing to file: {0}")]
-    IOError(#[from] std::io::Error),
+    IOError(#[from] io::Error),
     #[error("thread pool error: {0}")]
     ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
-    #[error("miscellaneous error: {0}")]
-    MiscError(#[from] anyhow::Error),
+    #[error("transmission error: {0}")]
+    SendProgressError(#[from] mpsc::SendError<(usize, usize)>),
+    #[error(transparent)]
+    SeedError(#[from] crate::random::SeedFromHexError),
 }
