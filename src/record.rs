@@ -86,7 +86,7 @@ pub struct DataRecord {
 }
 
 impl DataRecord {
-    pub fn new(thread_count: usize, key_filter: KeyFilter, fixed_key: Option<Key>) -> Self {
+    pub fn new(key_filter: KeyFilter, fixed_key: Option<Key>) -> Self {
         Self {
             r: BLOCK_LENGTH,
             d: BLOCK_WEIGHT,
@@ -102,7 +102,7 @@ impl DataRecord {
             decoding_failures: Vec::new(),
             seed: None,
             runtime: Duration::new(0, 0),
-            thread_count,
+            thread_count: crate::random::jump_count(),
         }
     }
 
@@ -115,6 +115,11 @@ impl DataRecord {
     #[inline]
     pub fn decoding_failures(&self) -> &Vec<DecodingFailureRecord> {
         &self.decoding_failures
+    }
+
+    #[inline]
+    pub fn push_decoding_failure(&mut self, df: DecodingFailureRecord) {
+        self.decoding_failures.push(df);
     }
 
     #[inline]
@@ -154,8 +159,13 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn push_decoding_failure(&mut self, df: DecodingFailureRecord) {
-        self.decoding_failures.push(df);
+    pub fn thread_count(&self) -> usize {
+        self.thread_count
+    }
+
+    #[inline]
+    pub fn update_thread_count(&mut self) {
+        self.thread_count = crate::random::jump_count();
     }
 }
 

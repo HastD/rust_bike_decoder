@@ -162,7 +162,7 @@ impl Settings {
             verbose: args.verbose,
             seed: args.seed.map(Seed::try_from).transpose()?,
             threads: args.threads.map_or_else(
-                || if args.parallel { num_cpus::get_physical() } else { 1 },
+                || if args.parallel { 0 } else { 1 },
                 |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,

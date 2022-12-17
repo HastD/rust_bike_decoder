@@ -46,6 +46,10 @@ pub fn custom_thread_rng() -> CustomThreadRng {
     CustomThreadRng { rng: CUSTOM_THREAD_RNG_KEY.with(|t| t.clone()) }
 }
 
+pub fn jump_count() -> usize {
+    JUMP_COUNTER.load(Ordering::SeqCst)
+}
+
 // Note: Debug implementation intentionally leaks internal state.
 #[derive(Clone, Debug)]
 pub struct CustomThreadRng {
