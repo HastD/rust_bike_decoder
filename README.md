@@ -79,10 +79,10 @@ To run 1 million trials (with random keys and random error vectors) and print th
 bike_decoder -N=1e6
 ```
 
-To run 100 million trials on non-weak keys only, with a weak key threshold of 4, saving the results to `results.json` every 1 million trials, using four threads and printing summary information at the beginning and end:
+To run 100 million trials in parallel on non-weak keys only, with a weak key threshold of 4, saving the results to `results.json` every 1 million trials, and printing summary information at the beginning and end:
 
 ```sh
-bike_decoder -N=1e8 -w=-1 -T=4 -o=results.json -s=1e6 --threads=4 -v
+bike_decoder -N=1e8 -w=-1 -T=4 -o=results.json -s=1e6 --parallel -v
 ```
 
 To run 25 million trials with a given fixed key (replace `...` with the support of the key blocks as a comma-separated list), using error vectors in the near-codeword set `A_{t,7}(N)`, recording a maximum of 100 decoding failures (additional decoding failures will be counted but the vectors will not be recorded), printing full verbose output, and saving the results to `results.json` at the end:

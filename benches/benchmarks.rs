@@ -4,7 +4,7 @@ use bike_decoder::{
     keys::Key,
     ncw::{TaggedErrorVector, NearCodewordClass},
     parameters::*,
-    random,
+    random::custom_thread_rng,
     settings::TrialSettings,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
@@ -17,36 +17,35 @@ use rand::Rng;
 pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("decoding_trial", |b| {
         let settings = TrialSettings::default();
-        let (mut rng, _) = random::get_rng(None);
-        b.iter(|| black_box(cli::decoding_trial(&settings, &mut rng)))
+        b.iter(|| black_box(cli::decoding_trial(&settings)))
     });
     c.bench_function("Key::random", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter(|| black_box(Key::random(&mut rng)))
     });
     c.bench_function("Key::random_non_weak", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter(|| black_box(Key::random_non_weak(3, &mut rng)))
     });
     c.bench_function("near_codeword", |b| {
-        let (mut rng_key, _) = random::get_rng(None);
-        let (mut rng_ncw, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
-                let key = Key::random(&mut rng_key);
-                let l = rng_key.gen_range(0..=BLOCK_WEIGHT);
+                let mut rng = custom_thread_rng();
+                let key = Key::random(&mut rng);
+                let l = rng.gen_range(0..=BLOCK_WEIGHT);
                 (key, l)
             },
             |inputs| black_box((
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng_ncw),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng_ncw),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng_ncw),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng),
+                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng),
             )),
             BatchSize::SmallInput
         )
     });
     c.bench_function("syndrome", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -58,7 +57,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("weight", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -70,7 +69,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("bgf_decoder", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);
@@ -83,7 +82,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
         )
     });
     c.bench_function("upc", |b| {
-        let (mut rng, _) = random::get_rng(None);
+        let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
                 let key = Key::random(&mut rng);

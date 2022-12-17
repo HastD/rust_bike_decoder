@@ -48,10 +48,11 @@ pub struct DecodingFailureRecord {
     h1: CyclicBlock,
     e_supp: SparseErrorVector,
     e_source: ErrorVectorSource,
+    thread: usize,
 }
 
-impl From<DecodingResult> for DecodingFailureRecord {
-    fn from(result: DecodingResult) -> Self {
+impl DecodingFailureRecord {
+    pub fn from(result: DecodingResult, thread: usize) -> Self {
         let (key, e) = result.take_key_vector();
         let (h0, h1) = key.take_blocks();
         let (e_supp, e_source) = e.take_vector();
@@ -59,83 +60,9 @@ impl From<DecodingResult> for DecodingFailureRecord {
             h0: h0.sorted(),
             h1: h1.sorted(),
             e_supp: e_supp.sorted(),
-            e_source
+            e_source,
+            thread,
         }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ThreadStats {
-    id: usize,
-    seed: Option<Seed>,
-    failure_count: usize,
-    trials: usize,
-    runtime: Duration,
-    done: bool,
-}
-
-impl ThreadStats {
-    pub fn new(id: usize) -> Self {
-        Self {
-            id,
-            seed: None,
-            failure_count: 0,
-            trials: 0,
-            runtime: Duration::new(0, 0),
-            done: false,
-        }
-    }
-
-    #[inline]
-    pub fn done(&self) -> bool {
-        self.done
-    }
-
-    #[inline]
-    pub fn set_done(&mut self, done: bool) {
-        self.done = done;
-    }
-
-    #[inline]
-    pub fn id(&self) -> usize {
-        self.id
-    }
-
-    #[inline]
-    pub fn set_seed(&mut self, seed: Seed) {
-        assert!(self.seed.is_none(), "Can't set seed twice");
-        self.seed = Some(seed);
-    }
-
-    #[inline]
-    pub fn failure_count(&self) -> usize {
-        self.failure_count
-    }
-
-    #[inline]
-    pub fn increment_failure_count(&mut self) {
-        self.failure_count += 1;
-    }
-
-    #[inline]
-    pub fn trials(&self) -> usize {
-        self.trials
-    }
-
-    #[inline]
-    pub fn set_trials(&mut self, count: usize) {
-        assert!(count >= self.trials, "Number of trials cannot decrease");
-        self.trials = count;
-    }
-
-    #[inline]
-    pub fn runtime(&self) -> Duration {
-        self.runtime
-    }
-
-    #[inline]
-    pub fn set_runtime(&mut self, runtime: Duration) {
-        self.runtime = runtime;
     }
 }
 
@@ -156,7 +83,6 @@ pub struct DataRecord {
     seed: Option<Seed>,
     runtime: Duration,
     thread_count: usize,
-    thread_stats: Option<Vec<ThreadStats>>,
 }
 
 impl DataRecord {
@@ -177,20 +103,18 @@ impl DataRecord {
             seed: None,
             runtime: Duration::new(0, 0),
             thread_count,
-            thread_stats: if thread_count > 1 {
-                let mut stats = Vec::with_capacity(thread_count);
-                for i in 0..thread_count {
-                    stats.push(ThreadStats::new(i));
-                }
-                Some(stats)
-            } else { None },
         }
     }
 
     #[inline]
-    pub fn record_seed(&mut self, seed: Seed) {
+    pub fn set_seed(&mut self, seed: Seed) {
         assert!(self.seed.is_none(), "Can't set seed twice");
         self.seed = Some(seed);
+    }
+
+    #[inline]
+    pub fn decoding_failures(&self) -> &Vec<DecodingFailureRecord> {
+        &self.decoding_failures
     }
 
     #[inline]
@@ -210,9 +134,13 @@ impl DataRecord {
 
     #[inline]
     pub fn set_trials(&mut self, count: usize) {
-        assert_eq!(self.thread_count, 1, "Use thread stats to set trials in multithreaded mode");
         assert!(count >= self.trials, "Number of trials cannot decrease");
         self.trials = count;
+    }
+
+    #[inline]
+    pub fn add_to_trials(&mut self, new_trials: usize) {
+        self.trials += new_trials;
     }
 
     #[inline]
@@ -228,15 +156,6 @@ impl DataRecord {
     #[inline]
     pub fn push_decoding_failure(&mut self, df: DecodingFailureRecord) {
         self.decoding_failures.push(df);
-    }
-
-    #[inline]
-    pub fn update_thread_stats(&mut self, stats: ThreadStats) {
-        let id = stats.id();
-        let thread_stats = self.thread_stats.as_mut()
-            .expect("Can't record thread stats, not in multithreaded mode");
-        thread_stats[id] = stats;
-        self.trials = thread_stats.iter().map(|stats| stats.trials).sum();
     }
 }
 

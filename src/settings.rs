@@ -37,8 +37,7 @@ pub struct Args {
     recordmax: f64, // parsed as scientific notation to usize
     #[arg(short,long,help="Save to disk frequency [default: only at end]")]
     savefreq: Option<f64>, // parsed as scientific notation to usize
-    #[arg(long, conflicts_with_all=["parallel", "threads"],
-        help="Specify PRNG seed as 256-bit hex string [default: random]")]
+    #[arg(long, help="Specify PRNG seed as 256-bit hex string [default: random]")]
     seed: Option<String>,
     #[arg(long, help="Set number of threads (ignores --parallel)")]
     threads: Option<usize>,
@@ -139,20 +138,6 @@ impl Settings {
         self.overwrite
     }
 
-    pub fn validate(&self) -> Result<(), RuntimeError> {
-        if self.save_frequency < Self::MIN_SAVE_FREQUENCY {
-            return Err(RuntimeError::RangeError(
-                format!("save_frequency must be >= {}", Self::MIN_SAVE_FREQUENCY)));
-        } else if self.threads > Self::MAX_THREAD_COUNT {
-            return Err(RuntimeError::RangeError(
-                format!("threads must be <= {}", Self::MAX_THREAD_COUNT)));
-        } else if self.seed.is_some() && self.parallel() {
-            return Err(RuntimeError::DependencyError(
-                "seed can only be specified in single-threaded mode".to_string()));
-        }
-        Ok(())
-    }
-
     pub fn from_args(args: Args) -> Result<Self, RuntimeError> {
         let settings = Self {
             number_of_trials: args.number as usize,
@@ -182,7 +167,6 @@ impl Settings {
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,
         };
-        settings.validate()?;
         Ok(settings)
     }
 }
