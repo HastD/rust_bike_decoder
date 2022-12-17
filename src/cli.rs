@@ -146,34 +146,33 @@ fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration)
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
-pub fn handle_decoding_failure(result: DecodingResult, thread: usize,
+fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
         data: &mut DataRecord, settings: &Settings) {
     assert!(!result.success(), "handle_decoding_failure should only be called for decoding failures");
-    let recorded_failure_count = data.decoding_failures().len();
-    let verbose = settings.verbose() >= 3;
-    if recorded_failure_count < settings.record_max() {
-        if verbose {
+    if data.decoding_failures().len() < settings.record_max() {
+        if settings.verbose() >= 3 {
             println!("Decoding failure found!");
             println!("Key: {}\nError vector: {}", result.key(), result.vector());
-            if recorded_failure_count + 1 == settings.record_max() {
+            if data.decoding_failures().len() + 1 == settings.record_max() {
                 println!("Maximum number of decoding failures recorded.");
             }    
         }
-        data.push_decoding_failure(DecodingFailureRecord::from(result, thread));
+        data.push_decoding_failure(DecodingFailureRecord::from(result, thread_id));
     }
 }
 
 fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataRecord,
-        settings: &Settings, start_time: Instant) -> Result<(), RuntimeError> {
+        settings: &Settings, runtime: Duration) -> Result<(), RuntimeError> {
     data.add_to_failure_count(new_failure_count);
     data.add_to_trials(new_trials);
-    data.set_runtime(start_time.elapsed());
+    data.update_thread_count();
+    data.set_runtime(runtime);
     if settings.output_file().is_some() || settings.verbose() >= 2 {
         write_json(settings.output_file(), &data)?;
     }    
     if settings.verbose() >= 2 {
         println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
-            data.failure_count(), data.trials(), data.runtime().as_secs_f64());
+            data.failure_count(), data.trials(), runtime.as_secs_f64());
     }
     Ok(())
 }
@@ -195,18 +194,23 @@ pub fn record_trial_results(
                 }
             }
         }
-        match rx_progress.try_recv() {
-            Ok((new_failure_count, new_trials)) => {
-                handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time)?;
+        loop {
+            match rx_progress.try_recv() {
+                Ok((new_fc, new_trials)) => {
+                    handle_progress(new_fc, new_trials, &mut data, &settings, start_time.elapsed())?;
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    thread::sleep(Duration::from_millis(100));
+                    break;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => { break 'outer; }
             }
-            Err(mpsc::TryRecvError::Empty) => { thread::sleep(Duration::from_millis(100)); }
-            Err(mpsc::TryRecvError::Disconnected) => { break; }
         }
     }
     // Drops the results receiver so no more decoding failures are handled
     drop(rx_results);
-    for (new_failure_count, new_trials) in rx_progress {
-        handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time)?;
+    for (new_fc, new_trials) in rx_progress {
+        handle_progress(new_fc, new_trials, &mut data, &settings, start_time.elapsed())?;
     }
     data.update_thread_count();
     data.set_runtime(start_time.elapsed());
@@ -216,8 +220,13 @@ pub fn record_trial_results(
 
 pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     let start_time = Instant::now();
-    rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build_global()
-        .expect("Should be able to construct thread pool");
+    if settings.verbose() >= 1 {
+        println!("{}", start_message(&settings));
+    }
+    check_file_writable(settings.output_file(), settings.overwrite())?;
+    // Set global PRNG seed used for generating data
+    crate::random::get_or_insert_global_seed(settings.seed());
+    rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build_global()?;
     // Set up (transmitter, receiver) pair and divide trials among threads
     let (tx_progress, rx_progress) = mpsc::channel();
     let (tx_results, rx_results) = mpsc::channel();
@@ -237,28 +246,31 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
 
 pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     let start_time = Instant::now();
+    if settings.verbose() >= 1 {
+        println!("{}", start_message(&settings));
+    }
+    check_file_writable(settings.output_file(), settings.overwrite())?;
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    data.set_seed(crate::random::global_seed().expect("Global seed should be set"));
-    for i in 0..settings.number_of_trials() {
-        let result = decoding_trial(settings.trial_settings());
-        if !result.success() {
-            data.add_to_failure_count(1);
-            handle_decoding_failure(result, JUMPS.with(|x| *x), &mut data, &settings);
-        }
-        if i % settings.save_frequency() == 0 && i != 0 {
-            data.set_trials(i);
-            data.set_runtime(start_time.elapsed());
-            if settings.output_file().is_some() || settings.verbose() >= 2 {
-                write_json(settings.output_file(), &data)?;
-            }
-            if settings.verbose() >= 2 {
-                println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
-                    data.failure_count(), i, data.runtime().as_secs_f64());
+    // Set global PRNG seed used for generating data
+    data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
+    // This will normally be zero but could differ if run inside a threaded application
+    let thread_id = JUMPS.with(|x| *x);
+    let mut trials_remaining = settings.number_of_trials();
+    while trials_remaining > 0 {
+        let mut new_failure_count = 0;
+        let new_trials = cmp::min(trials_remaining, settings.save_frequency());
+        for _ in 0..new_trials {
+            let result = decoding_trial(settings.trial_settings());
+            if !result.success() {
+                new_failure_count += 1;
+                handle_decoding_failure(result, thread_id, &mut data, &settings);
             }
         }
+        handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time.elapsed())?;
+        trials_remaining -= new_trials;
     }
     // Write final data
-    data.set_trials(settings.number_of_trials());
+    data.update_thread_count();
     data.set_runtime(start_time.elapsed());
     write_json(settings.output_file(), &data)?;
     if settings.verbose() >= 1 {
@@ -268,15 +280,9 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
 }
 
 pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {
-    crate::random::get_or_insert_global_seed(settings.seed());
-    check_file_writable(settings.output_file(), settings.overwrite())?;
-    if settings.verbose() >= 1 {
-        println!("{}", start_message(&settings));
-    }
     if settings.parallel() {
-        run_cli_multithreaded(settings)?;
+        run_cli_multithreaded(settings)
     } else {
-        run_cli_single_threaded(settings)?;
+        run_cli_single_threaded(settings)
     }
-    Ok(())
 }

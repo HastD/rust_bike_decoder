@@ -12,6 +12,8 @@ pub enum RuntimeError {
     DependencyError(String),
     #[error("error writing to file: {0}")]
     IOError(#[from] std::io::Error),
+    #[error("thread pool error: {0}")]
+    ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
     #[error("miscellaneous error: {0}")]
     MiscError(#[from] anyhow::Error),
 }
