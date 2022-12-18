@@ -107,7 +107,7 @@ pub struct DataRecord {
     decoding_failures: Vec<DecodingFailureRecord>,
     seed: Option<Seed>,
     runtime: Duration,
-    thread_count: usize,
+    thread_count: Option<usize>,
 }
 
 impl DataRecord {
@@ -127,7 +127,7 @@ impl DataRecord {
             decoding_failures: Vec::new(),
             seed: None,
             runtime: Duration::new(0, 0),
-            thread_count: crate::random::global_thread_count(),
+            thread_count: None,
         }
     }
 
@@ -189,13 +189,13 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn thread_count(&self) -> usize {
+    pub fn thread_count(&self) -> Option<usize> {
         self.thread_count
     }
 
     #[inline]
-    pub fn update_thread_count(&mut self) {
-        self.thread_count = crate::random::global_thread_count();
+    pub fn set_thread_count(&mut self, count: usize) {
+        self.thread_count = Some(count);
     }
 }
 

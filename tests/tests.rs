@@ -112,6 +112,7 @@ fn main_single_threaded_test() {
         .seed_index(Some(0))
         .build().unwrap();
     let data = application::run_single_threaded(settings).unwrap();
+    assert!(data.thread_count().is_none());
     assert_eq!(data.seed().unwrap(), seed);
     assert_eq!(data.failure_count(), 1);
     assert_eq!(data.decoding_failures().len(), 1);
@@ -139,7 +140,7 @@ fn main_multithreaded_test() {
     let data = parallel::run_multithreaded(settings).unwrap();
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed().unwrap(), seed);
-    assert_eq!(data.thread_count(), 4);
+    assert_eq!(data.thread_count(), Some(4));
     assert_eq!(data.failure_count(), 2);
     let mut decoding_failures = data.decoding_failures().clone();
     assert_eq!(data.decoding_failures().len(), 2);

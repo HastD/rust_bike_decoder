@@ -1,6 +1,7 @@
 use crate::{
     application,
-    random::{get_or_insert_global_seed, current_thread_id, custom_thread_rng},
+    random::{get_or_insert_global_seed, current_thread_id,
+        custom_thread_rng, global_thread_count},
     record::{DecodingResult, DataRecord},
     settings::{Settings, TrialSettings},
 };
@@ -89,7 +90,7 @@ pub fn record_trial_results(
         application::handle_progress(new_fc, new_trials, &mut data,
             &settings, start_time.elapsed())?;
     }
-    data.update_thread_count();
+    data.set_thread_count(global_thread_count());
     data.set_runtime(start_time.elapsed());
     if !settings.silent() {
         application::write_json(settings.output_file(), &data)?;

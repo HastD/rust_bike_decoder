@@ -3,7 +3,7 @@ use crate::{
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
-    random::{Seed, current_thread_id, get_rng_from_seed},
+    random::{Seed, current_thread_id, get_rng_from_seed, global_thread_count},
     record::{DecodingResult, DecodingFailureRecord, DataRecord},
     settings::{Settings, TrialSettings},
     syndrome::Syndrome,
@@ -137,7 +137,9 @@ pub fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut D
         settings: &Settings, runtime: Duration) -> Result<()> {
     data.add_to_failure_count(new_failure_count);
     data.add_to_trials(new_trials);
-    data.update_thread_count();
+    if settings.parallel() {
+        data.set_thread_count(global_thread_count());
+    }
     data.set_runtime(runtime);
     if !settings.silent() && (settings.output_file().is_some() || settings.verbose() >= 2) {
         write_json(settings.output_file(), &data)?;
@@ -177,7 +179,6 @@ pub fn run_single_threaded(settings: Settings) -> Result<DataRecord> {
         trials_remaining -= new_trials;
     }
     // Write final data
-    data.update_thread_count();
     data.set_runtime(start_time.elapsed());
     if !settings.silent() {
         write_json(settings.output_file(), &data)?;

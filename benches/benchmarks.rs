@@ -1,6 +1,6 @@
 use bike_decoder::{
-    cli,
-    decoder,
+    application::decoding_trial,
+    decoder::{bgf_decoder, unsatisfied_parity_checks},
     keys::Key,
     ncw::{TaggedErrorVector, NearCodewordClass},
     parameters::*,
@@ -8,7 +8,7 @@ use bike_decoder::{
     settings::TrialSettings,
     syndrome::Syndrome,
     vectors::SparseErrorVector,
-    threshold,
+    threshold::{compute_x, exact_threshold_ineq},
 };
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
@@ -17,7 +17,8 @@ use rand::Rng;
 pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("decoding_trial", |b| {
         let settings = TrialSettings::default();
-        b.iter(|| black_box(cli::decoding_trial(&settings)))
+        let mut rng = custom_thread_rng();
+        b.iter(|| black_box(decoding_trial(&settings, &mut rng)))
     });
     c.bench_function("Key::random", |b| {
         let mut rng = custom_thread_rng();
@@ -77,7 +78,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(decoder::bgf_decoder(&inputs.0, &mut inputs.1)),
+            |inputs| black_box(bgf_decoder(&inputs.0, &mut inputs.1)),
             BatchSize::SmallInput
         )
     });
@@ -90,16 +91,16 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(decoder::unsatisfied_parity_checks(&inputs.0, &mut inputs.1)),
+            |inputs| black_box(unsatisfied_parity_checks(&inputs.0, &mut inputs.1)),
             BatchSize::SmallInput
         )
     });
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         b.iter(|| {
-            let x = threshold::compute_x(r, d, t).unwrap();
+            let x = compute_x(r, d, t).unwrap();
             for ws in 0..=r as usize {
-                black_box(threshold::exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
+                black_box(exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
             }
         })
     });
