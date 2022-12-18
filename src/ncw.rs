@@ -5,7 +5,7 @@ use rand::{Rng, seq::SliceRandom, distributions::{Distribution, Uniform}};
 use serde::{Serialize, Deserialize};
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NearCodewordClass {
     C, N, TwoN
 }

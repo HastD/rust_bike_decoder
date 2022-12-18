@@ -35,7 +35,7 @@ pub fn global_thread_count() -> usize {
 }
 
 thread_local! {
-    pub static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
+    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
     static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
         let seed = get_or_insert_global_seed(None);
         let mut rng = Xoshiro256PlusPlus::from_seed(seed.0);
@@ -44,6 +44,10 @@ thread_local! {
         }
         Rc::new(UnsafeCell::new(rng))
     }
+}
+
+pub fn current_thread_id() -> usize {
+    CURRENT_THREAD_ID.with(|x| *x)
 }
 
 /// Generates a thread-local PRNG that uses Xoshiro256PlusPlus as the core,
@@ -98,9 +102,9 @@ impl RngCore for CustomThreadRng {
     }
 }
 
-type SeedInner = <Xoshiro256PlusPlus as SeedableRng>::Seed;
+type SeedInner = [u8; 32];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Seed(SeedInner);
 
 impl Seed {
@@ -108,6 +112,20 @@ impl Seed {
         let mut buf = SeedInner::default();
         OsRng.fill_bytes(&mut buf);
         Seed(buf)
+    }
+}
+
+impl From<SeedInner> for Seed {
+    #[inline]
+    fn from(arr: SeedInner) -> Self {
+        Self(arr)
+    }
+}
+
+impl From<Seed> for SeedInner {
+    #[inline]
+    fn from(seed: Seed) -> Self {
+        seed.0
     }
 }
 
@@ -143,4 +161,38 @@ pub enum SeedFromHexError {
     HexDecodeError(#[from] hex::FromHexError),
     #[error("PRNG seed must be 256 bits: {0}")]
     SizeError(#[from] std::array::TryFromSliceError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_seed_init() {
+        assert_eq!(global_seed(), None);
+        let seed1 = Seed::from_entropy();
+        get_or_insert_global_seed(Some(seed1));
+        assert_eq!(global_seed(), Some(seed1));
+        let seed2 = Seed::from_entropy();
+        assert_ne!(seed1, seed2);
+        get_or_insert_global_seed(Some(seed2));
+        assert_eq!(global_seed(), Some(seed1));
+    }
+
+    #[test]
+    fn thread_rng_seeds() {
+        let mut rng = custom_thread_rng();
+        {
+            let rng_inner = unsafe { &mut *rng.rng.get() };
+            rng_inner.jump();
+        }
+        let x = rng.next_u64();
+        let (y, other_thread_id) = std::thread::spawn(|| {
+            let mut rng = custom_thread_rng();
+            (rng.next_u64(), current_thread_id())
+        }).join().unwrap();
+        assert_eq!(current_thread_id() + 1, other_thread_id);
+        assert_eq!(x, y);
+        assert_eq!(global_thread_count(), 2);
+    }
 }

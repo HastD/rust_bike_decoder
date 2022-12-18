@@ -63,6 +63,54 @@ impl Settings {
     const MIN_SAVE_FREQUENCY: usize = 10000;
     const MAX_THREAD_COUNT: usize = 1024;
 
+    pub fn default_with_trials(number_of_trials: usize, parallel: bool) -> Self {
+        Self {
+            number_of_trials,
+            trial_settings: TrialSettings::default(),
+            save_frequency: number_of_trials,
+            record_max: 10000,
+            verbose: 0,
+            seed: None,
+            threads: if parallel { 0 } else { 1 },
+            output_file: None,
+            overwrite: false,
+        }
+    }
+
+    pub fn from_args(args: Args) -> Result<Self> {
+        let settings = Self {
+            number_of_trials: args.number as usize,
+            trial_settings: TrialSettings::new(
+                match args.weak_keys {
+                    0 => KeyFilter::Any,
+                    -1 => KeyFilter::NonWeak(args.weak_key_threshold),
+                    1 => KeyFilter::Weak(WeakType::Type1, args.weak_key_threshold),
+                    2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
+                    3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
+                    _ => {
+                        return Err(SettingsError::InvalidFilter.into());
+                    }
+                },
+                args.fixed_key.as_deref().map(serde_json::from_str).transpose()
+                    .context("--fixed-key should be valid JSON representing a key")?
+                    .map(Key::sorted),
+                args.ncw,
+                args.ncw_overlap
+            )?,
+            save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
+            record_max: args.recordmax as usize,
+            verbose: args.verbose,
+            seed: args.seed.map(Seed::try_from).transpose()
+                .context("--seed should be 256-bit hex string")?,
+            threads: args.threads.map_or_else(
+                || if args.parallel { 0 } else { 1 },
+                |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
+            output_file: args.output.map(PathBuf::from),
+            overwrite: args.overwrite,
+        };
+        Ok(settings)
+    }
+
     #[inline]
     pub fn number_of_trials(&self) -> usize {
         self.number_of_trials
@@ -137,40 +185,6 @@ impl Settings {
     pub fn overwrite(&self) -> bool {
         self.overwrite
     }
-
-    pub fn from_args(args: Args) -> Result<Self> {
-        let settings = Self {
-            number_of_trials: args.number as usize,
-            trial_settings: TrialSettings::new(
-                match args.weak_keys {
-                    0 => KeyFilter::Any,
-                    -1 => KeyFilter::NonWeak(args.weak_key_threshold),
-                    1 => KeyFilter::Weak(WeakType::Type1, args.weak_key_threshold),
-                    2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
-                    3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
-                    _ => {
-                        return Err(SettingsError::InvalidFilter.into());
-                    }
-                },
-                args.fixed_key.as_deref().map(serde_json::from_str).transpose()
-                    .context("--fixed-key should be valid JSON representing a key")?
-                    .map(Key::sorted),
-                args.ncw,
-                args.ncw_overlap
-            )?,
-            save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
-            record_max: args.recordmax as usize,
-            verbose: args.verbose,
-            seed: args.seed.map(Seed::try_from).transpose()
-                .context("--seed should be 256-bit hex string")?,
-            threads: args.threads.map_or_else(
-                || if args.parallel { 0 } else { 1 },
-                |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
-            output_file: args.output.map(PathBuf::from),
-            overwrite: args.overwrite,
-        };
-        Ok(settings)
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -235,4 +249,47 @@ pub enum SettingsError {
     NcwDependency,
     #[error("l must be in range 0..{} in A_{{t,l}}({0})", .0.max_l())]
     NcwRange(NearCodewordClass),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_args_example() {
+        let args = Args {
+            number: 1.75e4,
+            weak_keys: -1,
+            weak_key_threshold: 4,
+            fixed_key: Some(r#"{"h0":[6,25,77,145,165,212,230,232,247,261,306,341,449,466,493],
+                "h1":[35,108,119,159,160,163,221,246,249,286,310,360,484,559,580]}"#.to_string()),
+            ncw: Some(NearCodewordClass::C),
+            ncw_overlap: Some(7),
+            output: Some("test/path/to/file.json".to_string()),
+            overwrite: true,
+            parallel: true,
+            recordmax: 123.4,
+            savefreq: Some(50.0),
+            seed: Some("874a5940435d8a5462d8579af9f4cad2a737880dfb13620c5257a60ffaaae6cf".to_string()),
+            threads: Some(usize::MAX),
+            verbose: 2,
+        };
+        let settings = Settings::from_args(args).unwrap();
+        assert_eq!(settings.number_of_trials, 17500);
+        assert_eq!(settings.trial_settings.key_filter, KeyFilter::NonWeak(4));
+        assert_eq!(settings.trial_settings.fixed_key, Some(Key::from_support(
+            [6,25,77,145,165,212,230,232,247,261,306,341,449,466,493],
+            [35,108,119,159,160,163,221,246,249,286,310,360,484,559,580]).unwrap()));
+        assert_eq!(settings.trial_settings.ncw_class, Some(NearCodewordClass::C));
+        assert_eq!(settings.trial_settings.ncw_overlap, Some(7));
+        assert_eq!(settings.save_frequency, Settings::MIN_SAVE_FREQUENCY);
+        assert_eq!(settings.record_max, 123);
+        assert_eq!(settings.verbose, 2);
+        assert_eq!(settings.seed, Some(Seed::from(
+            [135,74,89,64,67,93,138,84,98,216,87,154,249,244,202,210,
+            167,55,136,13,251,19,98,12,82,87,166,15,250,170,230,207])));
+        assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
+        assert_eq!(settings.output_file, Some(PathBuf::from("test/path/to/file.json")));
+        assert_eq!(settings.overwrite, true);
+    }
 }

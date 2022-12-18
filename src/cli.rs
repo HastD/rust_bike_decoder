@@ -2,7 +2,6 @@ use crate::{
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
-    random::CURRENT_THREAD_ID,
     record::{DecodingResult, DecodingFailureRecord, DataRecord},
     settings::{Settings, TrialSettings},
     syndrome::Syndrome,
@@ -50,7 +49,7 @@ pub fn trial_iteration(settings: &TrialSettings, tx: &mpsc::Sender<(DecodingResu
     } else {
         // Attempt to send decoding failure, but ignore errors, as the receiver may
         // choose to hang up after receiving the maximum number of decoding failures.
-        tx.send((result, CURRENT_THREAD_ID.with(|x| *x))).ok();
+        tx.send((result, crate::random::current_thread_id())).ok();
         1
     }
 }
@@ -263,7 +262,7 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<()> {
     // Set global PRNG seed used for generating data
     data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
     // This will normally be zero but could differ if run inside a threaded application
-    let thread_id = CURRENT_THREAD_ID.with(|x| *x);
+    let thread_id = crate::random::current_thread_id();
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let mut new_failure_count = 0;

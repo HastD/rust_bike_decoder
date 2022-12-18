@@ -172,7 +172,7 @@ impl fmt::Display for Key {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum WeakType {
     Type1, Type2, Type3
 }
@@ -187,7 +187,7 @@ impl WeakType {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum KeyFilter {
     Any,
     NonWeak(usize),

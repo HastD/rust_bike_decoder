@@ -1,10 +1,15 @@
 use bike_decoder::{
+    cli,
     decoder,
-    keys::Key,
+    keys::{Key, KeyFilter},
+    ncw::NearCodewordClass,
     parameters::*,
+    random,
+    settings::{Settings, TrialSettings},
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
+use std::{sync::mpsc, time::Duration};
 
 const TRIALS: usize = 10000;
 
@@ -43,4 +48,38 @@ fn syndrome_e_out_consistent() {
         decoder::bf_masked_iter(&key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
     }
+}
+
+fn guaranteed_failure_settings() -> TrialSettings {
+    TrialSettings::new(KeyFilter::Any, None, Some(NearCodewordClass::N), Some(BLOCK_WEIGHT)).unwrap()
+}
+
+#[test]
+fn guaranteed_decoding_failure() {
+    let settings = guaranteed_failure_settings();
+    for _ in 0..TRIALS {
+        let result = cli::decoding_trial(&settings);
+        assert!(!result.success());
+    }
+}
+
+#[test]
+fn receive_decoding_failure() {
+    let settings = guaranteed_failure_settings();
+    let (tx, rx) = mpsc::channel();
+    cli::trial_iteration(&settings, &tx);
+    let (result, thread_id) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert!(!result.success());
+    assert_eq!(thread_id, random::current_thread_id())
+}
+
+#[test]
+fn receive_progress_message() {
+    let settings = Settings::default_with_trials(10, true);
+    let (tx_results, _) = mpsc::channel();
+    let (tx_progress, rx) = mpsc::channel();
+    cli::trial_loop_parallel(&settings, tx_progress, tx_results).unwrap();
+    let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(trials, 10);
+    assert_eq!(failure_count, 0);
 }
