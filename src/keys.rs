@@ -12,6 +12,12 @@ pub struct Key {
     h1: CyclicBlock,
 }
 
+impl From<(CyclicBlock, CyclicBlock)> for Key {
+    fn from((h0, h1): (CyclicBlock, CyclicBlock)) -> Self {
+        Self { h0, h1 }
+    }
+}
+
 impl Key {
     pub fn from_support(h0_supp: [Index; BLOCK_WEIGHT], h1_supp: [Index; BLOCK_WEIGHT]) -> Result<Self, InvalidSupport> {
         Ok(Self {

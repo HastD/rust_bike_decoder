@@ -9,6 +9,7 @@ use std::{
 };
 use anyhow::{Context, Result};
 use clap::Parser;
+use derive_builder::Builder;
 use thiserror::Error;
 
 #[derive(Parser)]
@@ -46,36 +47,23 @@ pub struct Args {
     verbose: u8,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Builder, Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     number_of_trials: usize,
-    trial_settings: TrialSettings,
-    save_frequency: usize,
-    record_max: usize,
-    verbose: u8,
-    seed: Option<Seed>,
-    threads: usize,
-    output_file: Option<PathBuf>,
-    overwrite: bool,
+    #[builder(default)] trial_settings: TrialSettings,
+    #[builder(default)] save_frequency: usize,
+    #[builder(default="10000")] record_max: usize,
+    #[builder(default)] verbose: u8,
+    #[builder(default)] seed: Option<Seed>,
+    #[builder(default="1")] threads: usize,
+    #[builder(default)] output_file: Option<PathBuf>,
+    #[builder(default="false")] overwrite: bool,
+    #[builder(default="false")] silent: bool,
 }
 
 impl Settings {
     const MIN_SAVE_FREQUENCY: usize = 10000;
     const MAX_THREAD_COUNT: usize = 1024;
-
-    pub fn default_with_trials(number_of_trials: usize, parallel: bool) -> Self {
-        Self {
-            number_of_trials,
-            trial_settings: TrialSettings::default(),
-            save_frequency: number_of_trials,
-            record_max: 10000,
-            verbose: 0,
-            seed: None,
-            threads: if parallel { 0 } else { 1 },
-            output_file: None,
-            overwrite: false,
-        }
-    }
 
     pub fn from_args(args: Args) -> Result<Self> {
         let settings = Self {
@@ -107,6 +95,7 @@ impl Settings {
                 |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,
+            silent: false,
         };
         Ok(settings)
     }
@@ -148,7 +137,11 @@ impl Settings {
 
     #[inline]
     pub fn save_frequency(&self) -> usize {
-        self.save_frequency
+        if self.save_frequency == 0 {
+            self.number_of_trials
+        } else {
+            self.save_frequency
+        }
     }
 
     #[inline]
@@ -185,9 +178,14 @@ impl Settings {
     pub fn overwrite(&self) -> bool {
         self.overwrite
     }
+
+    #[inline]
+    pub fn silent(&self) -> bool {
+        self.silent
+    }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TrialSettings {
     key_filter: KeyFilter,
     fixed_key: Option<Key>,
@@ -291,5 +289,25 @@ mod tests {
         assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
         assert_eq!(settings.output_file, Some(PathBuf::from("test/path/to/file.json")));
         assert_eq!(settings.overwrite, true);
+        assert_eq!(settings.silent, false);
+    }
+
+    #[test]
+    fn settings_builder() {
+        let settings = SettingsBuilder::default()
+            .number_of_trials(12345).silent(true)
+            .build().unwrap();
+        assert_eq!(settings, Settings {
+            number_of_trials: 12345,
+            trial_settings: TrialSettings::default(),
+            save_frequency: 0,
+            record_max: 10000,
+            verbose: 0,
+            seed: None,
+            threads: 1,
+            output_file: None,
+            overwrite: false,
+            silent: true,
+        });
     }
 }

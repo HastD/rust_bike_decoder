@@ -18,5 +18,6 @@ use clap::Parser;
 fn main() -> Result<()> {
     let args = Args::parse();
     let settings = Settings::from_args(args)?;
-    cli::run_cli(settings)
+    cli::run_cli(settings)?;
+    Ok(())
 }

@@ -2,10 +2,10 @@ use bike_decoder::{
     cli,
     decoder,
     keys::{Key, KeyFilter},
-    ncw::NearCodewordClass,
+    ncw::{ErrorVectorSource, NearCodewordClass},
     parameters::*,
-    random,
-    settings::{Settings, TrialSettings},
+    random::{self, Seed},
+    settings::{SettingsBuilder, TrialSettings},
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
@@ -75,11 +75,39 @@ fn receive_decoding_failure() {
 
 #[test]
 fn receive_progress_message() {
-    let settings = Settings::default_with_trials(10, true);
+    let settings = SettingsBuilder::default()
+        .number_of_trials(10).threads(4)
+        .build().unwrap();
     let (tx_results, _) = mpsc::channel();
     let (tx_progress, rx) = mpsc::channel();
     cli::trial_loop_parallel(&settings, tx_progress, tx_results).unwrap();
     let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(trials, 10);
     assert_eq!(failure_count, 0);
+}
+
+// This test has to run by itself or the global seeding causes problems
+#[test]
+#[ignore]
+fn main_trials_test() {
+    let seed = Seed::try_from("052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf".to_string()).unwrap();
+    let settings = SettingsBuilder::default()
+        .number_of_trials(100_000).silent(true)
+        .threads(1)
+        .seed(Some(seed))
+        .build().unwrap();
+    let data = cli::run_cli(settings).unwrap();
+    assert_eq!(random::global_seed().unwrap(), seed);
+    assert_eq!(data.seed().unwrap(), seed);
+    assert_eq!(data.failure_count(), 1);
+    assert_eq!(data.decoding_failures().len(), 1);
+    let df = &data.decoding_failures()[0];
+    assert_eq!(Key::from((df.h0().clone(), df.h1().clone())), Key::from_support(
+        [78,107,113,195,230,231,259,265,354,383,412,430,455,501,583],
+        [8,26,62,150,204,242,265,312,324,386,437,523,535,547,566]
+    ).unwrap());
+    assert_eq!(df.e_supp().clone(), SparseErrorVector::from_support(
+        [138,276,406,447,489,494,523,553,562,622,630,651,692,733,735,783,951,1158]
+    ).unwrap());
+    assert_eq!(df.e_source(), ErrorVectorSource::Random);
 }

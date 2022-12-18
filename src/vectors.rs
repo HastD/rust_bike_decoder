@@ -24,6 +24,14 @@ pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     [Index; WEIGHT]
 );
 
+impl<const WEIGHT: usize, const LENGTH: usize> TryFrom<[Index; WEIGHT]> for SparseVector<WEIGHT, LENGTH> {
+    type Error = InvalidSupport;
+
+    fn try_from(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
+        Self::from_support(supp)
+    }
+}
+
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
         let v = Self(supp);

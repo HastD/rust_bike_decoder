@@ -167,8 +167,14 @@ pub enum SeedFromHexError {
 mod tests {
     use super::*;
 
+    fn overwrite_global_seed(seed: Option<Seed>) {
+        let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
+        *global_seed = seed;
+    }
+    
     #[test]
     fn global_seed_init() {
+        overwrite_global_seed(None);
         assert_eq!(global_seed(), None);
         let seed1 = Seed::from_entropy();
         get_or_insert_global_seed(Some(seed1));

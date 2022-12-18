@@ -44,7 +44,7 @@ impl clap::ValueEnum for NearCodewordClass {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NearCodewordSet {
     class: NearCodewordClass,
     l: usize,
@@ -66,14 +66,14 @@ impl NearCodewordSet {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorVectorSource {
     Random,
     NearCodeword(NearCodewordSet),
     Other,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, Deserialize)]
 pub struct TaggedErrorVector {
     vector: SparseErrorVector,
     source: ErrorVectorSource

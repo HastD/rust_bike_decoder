@@ -64,6 +64,31 @@ impl DecodingFailureRecord {
             thread,
         }
     }
+
+    #[inline]
+    pub fn h0(&self) -> &CyclicBlock {
+        &self.h0
+    }
+
+    #[inline]
+    pub fn h1(&self) -> &CyclicBlock {
+        &self.h1
+    }
+
+    #[inline]
+    pub fn e_supp(&self) -> &SparseErrorVector {
+        &self.e_supp
+    }
+
+    #[inline]
+    pub fn e_source(&self) -> ErrorVectorSource {
+        self.e_source
+    }
+
+    #[inline]
+    pub fn thread(&self) -> usize {
+        self.thread
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -104,6 +129,11 @@ impl DataRecord {
             runtime: Duration::new(0, 0),
             thread_count: crate::random::global_thread_count(),
         }
+    }
+
+    #[inline]
+    pub fn seed(&self) -> Option<Seed> {
+        self.seed
     }
 
     #[inline]

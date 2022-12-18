@@ -173,7 +173,7 @@ fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataR
     data.add_to_trials(new_trials);
     data.update_thread_count();
     data.set_runtime(runtime);
-    if settings.output_file().is_some() || settings.verbose() >= 2 {
+    if !settings.silent() && (settings.output_file().is_some() || settings.verbose() >= 2) {
         write_json(settings.output_file(), &data)?;
     }    
     if settings.verbose() >= 2 {
@@ -188,7 +188,7 @@ pub fn record_trial_results(
     rx_results: mpsc::Receiver<(DecodingResult, usize)>,
     settings: Settings,
     start_time: Instant
-) -> Result<(usize, usize, Duration)> {
+) -> Result<DataRecord> {
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
     data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
     'outer: loop {
@@ -220,11 +220,13 @@ pub fn record_trial_results(
     }
     data.update_thread_count();
     data.set_runtime(start_time.elapsed());
-    write_json(settings.output_file(), &data)?;
-    Ok((data.failure_count(), data.trials(), start_time.elapsed()))
+    if !settings.silent() {
+        write_json(settings.output_file(), &data)?;
+    }
+    Ok(data)
 }
 
-pub fn run_cli_multithreaded(settings: Settings) -> Result<()> {
+pub fn run_cli_multithreaded(settings: Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -242,16 +244,16 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<()> {
     );
     trial_loop_parallel(&settings, tx_progress, tx_results)?;
     // Wait for data processing to finish
-    let (failure_count, trials, runtime) = handler_thread.join()
+    let data = handler_thread.join()
         // If join() failed, propagate the panic from the thread
         .unwrap_or_else(|err| std::panic::resume_unwind(err))?;
     if settings.verbose() >= 1 {
-        println!("{}", end_message(failure_count, trials, runtime));
+        println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
     }
-    Ok(())
+    Ok(data)
 }
 
-pub fn run_cli_single_threaded(settings: Settings) -> Result<()> {
+pub fn run_cli_single_threaded(settings: Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -280,14 +282,16 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<()> {
     // Write final data
     data.update_thread_count();
     data.set_runtime(start_time.elapsed());
-    write_json(settings.output_file(), &data)?;
+    if !settings.silent() {
+        write_json(settings.output_file(), &data)?;
+    }
     if settings.verbose() >= 1 {
         println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
     }
-    Ok(())
+    Ok(data)
 }
 
-pub fn run_cli(settings: Settings) -> Result<()> {
+pub fn run_cli(settings: Settings) -> Result<DataRecord> {
     if settings.parallel() {
         run_cli_multithreaded(settings)
     } else {
