@@ -40,6 +40,9 @@ pub struct Args {
     savefreq: Option<f64>, // parsed as scientific notation to usize
     #[arg(long, help="Specify PRNG seed as 256-bit hex string [default: random]")]
     seed: Option<String>,
+    #[arg(long, conflicts_with_all=["parallel", "threads"],
+        help="Initialize PRNG to match specified thread index (single-threaded only)")]
+    seed_index: Option<usize>,
     #[arg(long, help="Set number of threads (ignores --parallel)")]
     threads: Option<usize>,
     #[arg(short, long, action = clap::ArgAction::Count,
@@ -55,6 +58,7 @@ pub struct Settings {
     #[builder(default="10000")] record_max: usize,
     #[builder(default)] verbose: u8,
     #[builder(default)] seed: Option<Seed>,
+    #[builder(default)] seed_index: Option<usize>,
     #[builder(default="1")] threads: usize,
     #[builder(default)] output_file: Option<PathBuf>,
     #[builder(default="false")] overwrite: bool,
@@ -90,6 +94,7 @@ impl Settings {
             verbose: args.verbose,
             seed: args.seed.map(Seed::try_from).transpose()
                 .context("--seed should be 256-bit hex string")?,
+            seed_index: args.seed_index,
             threads: args.threads.map_or_else(
                 || if args.parallel { 0 } else { 1 },
                 |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
@@ -157,6 +162,11 @@ impl Settings {
     #[inline]
     pub fn seed(&self) -> Option<Seed> {
         self.seed
+    }
+
+    #[inline]
+    pub fn seed_index(&self) -> Option<usize> {
+        self.seed_index
     }
 
     #[inline]
@@ -269,6 +279,7 @@ mod tests {
             recordmax: 123.4,
             savefreq: Some(50.0),
             seed: Some("874a5940435d8a5462d8579af9f4cad2a737880dfb13620c5257a60ffaaae6cf".to_string()),
+            seed_index: None,
             threads: Some(usize::MAX),
             verbose: 2,
         };
@@ -286,6 +297,7 @@ mod tests {
         assert_eq!(settings.seed, Some(Seed::from(
             [135,74,89,64,67,93,138,84,98,216,87,154,249,244,202,210,
             167,55,136,13,251,19,98,12,82,87,166,15,250,170,230,207])));
+        assert!(settings.seed_index().is_none());
         assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
         assert_eq!(settings.output_file, Some(PathBuf::from("test/path/to/file.json")));
         assert_eq!(settings.overwrite, true);
@@ -304,6 +316,7 @@ mod tests {
             record_max: 10000,
             verbose: 0,
             seed: None,
+            seed_index: None,
             threads: 1,
             output_file: None,
             overwrite: false,

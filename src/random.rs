@@ -16,6 +16,14 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
+pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
+    let mut rng = Xoshiro256PlusPlus::from_seed(seed.into());
+    for _ in 0..jumps {
+        rng.jump();
+    }
+    rng
+}
+
 lazy_static! {
     static ref GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
     static ref GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -38,10 +46,7 @@ thread_local! {
     static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
     static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
         let seed = get_or_insert_global_seed(None);
-        let mut rng = Xoshiro256PlusPlus::from_seed(seed.0);
-        for _ in 0..CURRENT_THREAD_ID.with(|x| *x) {
-            rng.jump();
-        }
+        let rng = get_rng_from_seed(seed, current_thread_id());
         Rc::new(UnsafeCell::new(rng))
     }
 }

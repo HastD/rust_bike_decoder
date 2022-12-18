@@ -1,8 +1,9 @@
-pub mod cli;
+pub mod application;
 pub mod decoder;
 //pub mod graphs;
 pub mod keys;
 pub mod ncw;
+pub mod parallel;
 pub mod parameters;
 pub mod random;
 pub mod record;
@@ -12,12 +13,21 @@ pub mod threshold;
 pub mod vectors;
 
 use crate::settings::{Args, Settings};
+use crate::record::DataRecord;
 use anyhow::Result;
 use clap::Parser;
+
+pub fn run_application(settings: Settings) -> Result<DataRecord> {
+    if settings.parallel() {
+        parallel::run_multithreaded(settings)
+    } else {
+        application::run_single_threaded(settings)
+    }
+}
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let settings = Settings::from_args(args)?;
-    cli::run_cli(settings)?;
+    run_application(settings)?;
     Ok(())
 }

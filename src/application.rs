@@ -1,7 +1,9 @@
 use crate::{
+    decoder::bgf_decoder,
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
+    random::{Seed, current_thread_id, get_rng_from_seed},
     record::{DecodingResult, DecodingFailureRecord, DataRecord},
     settings::{Settings, TrialSettings},
     syndrome::Syndrome,
@@ -12,71 +14,35 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::Path,
-    sync::mpsc,
     time::{Duration, Instant},
-    thread,
 };
 use anyhow::{Context, Result};
 use rand::Rng;
-use rayon::prelude::*;
 use serde::Serialize;
 use uuid::Uuid;
 
-pub fn decoding_trial(settings: &TrialSettings) -> DecodingResult {
-    let mut rng = crate::random::custom_thread_rng();
+pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R) -> DecodingResult
+    where R: Rng + ?Sized
+{
     // Use fixed_key if provided, otherwise generate random key using specified filter
     let key = settings.fixed_key().cloned()
-        .unwrap_or_else(|| Key::random_filtered(settings.key_filter(), &mut rng));
+        .unwrap_or_else(|| Key::random_filtered(settings.key_filter(), rng));
     let tagged_error_vector = if let Some(ncw_class) = settings.ncw_class() {
         let l = settings.ncw_overlap().unwrap_or_else(|| rng.gen_range(0 ..= ncw_class.max_l()));
-        TaggedErrorVector::near_codeword(&key, ncw_class, l, &mut rng)
+        TaggedErrorVector::near_codeword(&key, ncw_class, l, rng)
     } else {
-        TaggedErrorVector::random(&mut rng)
+        TaggedErrorVector::random(rng)
     };
     let e_supp = tagged_error_vector.vector();
     let e_in = e_supp.dense();
     let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.vector());
-    let (e_out, same_syndrome) = crate::decoder::bgf_decoder(&key, &mut syn);
+    let (e_out, same_syndrome) = bgf_decoder(&key, &mut syn);
     let success = e_in == e_out;
     assert!(same_syndrome || !success);
     DecodingResult::from(key, tagged_error_vector, success)
 }
 
-pub fn trial_iteration(settings: &TrialSettings, tx: &mpsc::Sender<(DecodingResult, usize)>) -> usize {
-    let result = decoding_trial(settings);
-    if result.success() {
-        0
-    } else {
-        // Attempt to send decoding failure, but ignore errors, as the receiver may
-        // choose to hang up after receiving the maximum number of decoding failures.
-        tx.send((result, crate::random::current_thread_id())).ok();
-        1
-    }
-}
-
-// Runs decoding_trial in a loop, sending decoding failures via tx_results and
-// progress updates (counts of decoding failures and trials run) via tx_progress.
-pub fn trial_loop_parallel(
-    settings: &Settings,
-    tx_progress: mpsc::Sender<(usize, usize)>,
-    tx_results: mpsc::Sender<(DecodingResult, usize)>,
-) -> Result<()> {
-    let mut trials_remaining = settings.number_of_trials();
-    while trials_remaining > 0 {
-        let tx_results = tx_results.clone();
-        let new_trials = cmp::min(trials_remaining, settings.save_frequency());
-        let new_failure_count = (0..new_trials).into_par_iter().map_with(
-            (settings.trial_settings(), tx_results),
-            |(settings, tx), _| trial_iteration(&settings, &tx)
-        ).sum();
-        tx_progress.send((new_failure_count, new_trials))
-            .context("Progress receiver should not be closed")?;
-        trials_remaining -= new_trials;
-    }
-    Ok(())
-}
-
-fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()> {
+pub fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()> {
     if let Some(filename) = output {
         if !overwrite && filename.try_exists().context("Should be able to check existence of output file")?
                 && fs::metadata(filename).context("Should be able to access output file metadata")?.len() > 0 {
@@ -91,7 +57,7 @@ fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()> {
 }
 
 /// Serializes data in JSON format to the specified path, or to standard output if path not provided.
-fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<()>
+pub fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<()>
     where P: AsRef<Path> + Copy
 {
     if let Some(filename) = output {
@@ -106,7 +72,7 @@ fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<()>
     Ok(())
 }
 
-fn start_message(settings: &Settings) -> String {
+pub fn start_message(settings: &Settings) -> String {
     let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
         BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
     let weak_key_message = match settings.key_filter() {
@@ -131,7 +97,7 @@ fn start_message(settings: &Settings) -> String {
         settings.number_of_trials(), parameter_message, weak_key_message, ncw_message, thread_message)
 }
 
-fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration) -> String {
+pub fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration) -> String {
     let dfr = failure_count as f64 / number_of_trials as f64;
     let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
     let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
@@ -152,7 +118,7 @@ fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration)
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
-fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
+pub fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
         data: &mut DataRecord, settings: &Settings) {
     assert!(!result.success(), "handle_decoding_failure should only be called for decoding failures");
     if data.decoding_failures().len() < settings.record_max() {
@@ -167,7 +133,7 @@ fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
     }
 }
 
-fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataRecord,
+pub fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataRecord,
         settings: &Settings, runtime: Duration) -> Result<()> {
     data.add_to_failure_count(new_failure_count);
     data.add_to_trials(new_trials);
@@ -183,77 +149,7 @@ fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataR
     Ok(())
 }
 
-pub fn record_trial_results(
-    rx_progress: mpsc::Receiver<(usize, usize)>,
-    rx_results: mpsc::Receiver<(DecodingResult, usize)>,
-    settings: Settings,
-    start_time: Instant
-) -> Result<DataRecord> {
-    let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
-    'outer: loop {
-        for (result, thread) in rx_results.try_iter() {
-            if !result.success() {
-                handle_decoding_failure(result, thread, &mut data, &settings);
-                if data.decoding_failures().len() == settings.record_max() {
-                    break 'outer;
-                }
-            }
-        }
-        loop {
-            match rx_progress.try_recv() {
-                Ok((new_fc, new_trials)) => {
-                    handle_progress(new_fc, new_trials, &mut data, &settings, start_time.elapsed())?;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(Duration::from_millis(100));
-                    break;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => { break 'outer; }
-            }
-        }
-    }
-    // Drops the results receiver so no more decoding failures are handled
-    drop(rx_results);
-    for (new_fc, new_trials) in rx_progress {
-        handle_progress(new_fc, new_trials, &mut data, &settings, start_time.elapsed())?;
-    }
-    data.update_thread_count();
-    data.set_runtime(start_time.elapsed());
-    if !settings.silent() {
-        write_json(settings.output_file(), &data)?;
-    }
-    Ok(data)
-}
-
-pub fn run_cli_multithreaded(settings: Settings) -> Result<DataRecord> {
-    let start_time = Instant::now();
-    if settings.verbose() >= 1 {
-        println!("{}", start_message(&settings));
-    }
-    check_file_writable(settings.output_file(), settings.overwrite())?;
-    // Set global PRNG seed used for generating data
-    crate::random::get_or_insert_global_seed(settings.seed());
-    rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build_global()?;
-    // Set up channels to receive decoding results and progress updates
-    let (tx_results, rx_results) = mpsc::channel();
-    let (tx_progress, rx_progress) = mpsc::channel();
-    let settings_clone = settings.clone();
-    let handler_thread = thread::spawn(move ||
-        record_trial_results(rx_progress, rx_results, settings_clone, start_time)
-    );
-    trial_loop_parallel(&settings, tx_progress, tx_results)?;
-    // Wait for data processing to finish
-    let data = handler_thread.join()
-        // If join() failed, propagate the panic from the thread
-        .unwrap_or_else(|err| std::panic::resume_unwind(err))?;
-    if settings.verbose() >= 1 {
-        println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
-    }
-    Ok(data)
-}
-
-pub fn run_cli_single_threaded(settings: Settings) -> Result<DataRecord> {
+pub fn run_single_threaded(settings: Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -261,19 +157,20 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<DataRecord> {
     check_file_writable(settings.output_file(), settings.overwrite())?;
     // Initialize object storing data to be recorded
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
+    let seed = settings.seed().unwrap_or_else(|| Seed::from_entropy());
     // Set global PRNG seed used for generating data
-    data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
-    // This will normally be zero but could differ if run inside a threaded application
-    let thread_id = crate::random::current_thread_id();
+    data.set_seed(seed);
+    let seed_index = settings.seed_index().unwrap_or_else(|| current_thread_id());
+    let mut rng = get_rng_from_seed(seed, seed_index);
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let mut new_failure_count = 0;
         let new_trials = cmp::min(trials_remaining, settings.save_frequency());
         for _ in 0..new_trials {
-            let result = decoding_trial(settings.trial_settings());
+            let result = decoding_trial(settings.trial_settings(), &mut rng);
             if !result.success() {
                 new_failure_count += 1;
-                handle_decoding_failure(result, thread_id, &mut data, &settings);
+                handle_decoding_failure(result, seed_index, &mut data, &settings);
             }
         }
         handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time.elapsed())?;
@@ -289,12 +186,4 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<DataRecord> {
         println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
     }
     Ok(data)
-}
-
-pub fn run_cli(settings: Settings) -> Result<DataRecord> {
-    if settings.parallel() {
-        run_cli_multithreaded(settings)
-    } else {
-        run_cli_single_threaded(settings)
-    }
 }

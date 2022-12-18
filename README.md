@@ -46,6 +46,8 @@ Options:
           Save to disk frequency [default: only at end]
       --seed <SEED>
           Specify PRNG seed as 256-bit hex string [default: random]
+      --seed-index <SEED_INDEX>
+          Initialize PRNG to match specified thread index (single-threaded only)
       --threads <THREADS>
           Set number of threads (ignores --parallel)
   -v, --verbose...

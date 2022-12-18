@@ -1,8 +1,9 @@
-pub mod cli;
+pub mod application;
 pub mod decoder;
 pub mod graphs;
 pub mod keys;
 pub mod ncw;
+pub mod parallel;
 pub mod parameters;
 pub mod random;
 pub mod record;
