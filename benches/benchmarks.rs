@@ -97,7 +97,7 @@ pub fn decoder_benchmarks(c: &mut Criterion) {
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         b.iter(|| {
-            let x = threshold::compute_x(r, d, t);
+            let x = threshold::compute_x(r, d, t).unwrap();
             for ws in 0..=r as usize {
                 black_box(threshold::exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
             }

@@ -1,15 +1,15 @@
 use crate::{
-    error::RuntimeError,
     keys::{Key, KeyFilter, WeakType},
     ncw::NearCodewordClass,
     random::Seed,
-    vectors::InvalidSupport,
 };
 use std::{
     cmp,
     path::{Path, PathBuf},
 };
+use anyhow::{Context, Result};
 use clap::Parser;
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -138,7 +138,7 @@ impl Settings {
         self.overwrite
     }
 
-    pub fn from_args(args: Args) -> Result<Self, RuntimeError> {
+    pub fn from_args(args: Args) -> Result<Self> {
         let settings = Self {
             number_of_trials: args.number as usize,
             trial_settings: TrialSettings::new(
@@ -149,18 +149,20 @@ impl Settings {
                     2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
                     3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
                     _ => {
-                        return Err(RuntimeError::RangeError(
-                            "weak_key_filter must be in {-1, 0, 1, 2, 3}".to_string()));
+                        return Err(SettingsError::InvalidFilter.into());
                     }
                 },
-                args.fixed_key.as_deref().map(serde_json::from_str).transpose()?.map(Key::sorted),
+                args.fixed_key.as_deref().map(serde_json::from_str).transpose()
+                    .context("--fixed-key should be valid JSON representing a key")?
+                    .map(Key::sorted),
                 args.ncw,
                 args.ncw_overlap
             )?,
             save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
-            seed: args.seed.map(Seed::try_from).transpose()?,
+            seed: args.seed.map(Seed::try_from).transpose()
+                .context("--seed should be 256-bit hex string")?,
             threads: args.threads.map_or_else(
                 || if args.parallel { 0 } else { 1 },
                 |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
@@ -185,21 +187,18 @@ impl TrialSettings {
         fixed_key: Option<Key>,
         ncw_class: Option<NearCodewordClass>,
         ncw_overlap: Option<usize>    
-    ) -> Result<Self, RuntimeError> {
+    ) -> Result<Self> {
         if let Some(key) = fixed_key.as_ref() {
-            key.validate()?;
+            key.validate().context("--fixed-key must specify valid key support")?;
             if !key.matches_filter(key_filter) {
-                return Err(RuntimeError::DataError(InvalidSupport(
-                    "fixed_key does not match key filter".to_string())));
+                return Err(SettingsError::InvalidFixedKey.into());
             }
         }
         if let Some(l) = ncw_overlap {
-            let sample_class = ncw_class.ok_or_else(|| RuntimeError::DependencyError(
-                "ncw_overlap requires ncw_class to be set".to_string()))?;
+            let sample_class = ncw_class.ok_or(SettingsError::NcwDependency)?;
             let l_max = sample_class.max_l();
             if l > l_max {
-                return Err(RuntimeError::RangeError(
-                    format!("l must be in range 0..{} in A_{{t,l}}({})", l_max, sample_class)));
+                return Err(SettingsError::NcwRange(sample_class).into());
             }
         }
         Ok(Self { key_filter, fixed_key, ncw_class, ncw_overlap })
@@ -224,4 +223,16 @@ impl TrialSettings {
     pub fn ncw_overlap(&self) -> Option<usize> {
         self.ncw_overlap
     }
+}
+
+#[derive(Copy, Clone, Debug, Error)]
+pub enum SettingsError {
+    #[error("weak_key_filter must be in {{-1, 0, 1, 2, 3}}")]
+    InvalidFilter,
+    #[error("fixed_key does not match key filter")]
+    InvalidFixedKey,
+    #[error("ncw_overlap requires ncw_class to be set")]
+    NcwDependency,
+    #[error("l must be in range 0..{} in A_{{t,l}}({0})", .0.max_l())]
+    NcwRange(NearCodewordClass),
 }

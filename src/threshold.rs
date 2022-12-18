@@ -2,7 +2,8 @@ use crate::parameters::*;
 use lazy_static::lazy_static;
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
-use std::{cmp, fmt};
+use std::cmp;
+use thiserror::Error;
 
 lazy_static! {
     pub static ref THRESHOLD_CACHE: Vec<u8> = {
@@ -86,30 +87,16 @@ pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Error)]
 pub enum ThresholdError {
+    #[error("Threshold constant X must be finite")]
     XError,
+    #[error("Syndrome weight ({0}) cannot be greater than block length ({1})")]
     WeightError(usize, usize),
+    #[error("Computed threshold exceeds maximum supported value {}", u8::MAX)]
     OverflowError,
+    #[error("Computed threshold was infinite or NaN")]
     Infinite,
-}
-
-impl std::error::Error for ThresholdError {}
-
-impl fmt::Display for ThresholdError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Self::XError => write!(f, "Threshold constant X must be finite"),
-            Self::WeightError(ws, r) => {
-                write!(f, "Syndrome weight ({ws}) cannot be greater than block length ({r})")
-            }
-            Self::OverflowError => {
-                write!(f, "Computed threshold exceeds maximum supported value {}",
-                    u8::MAX)
-            }
-            Self::Infinite => write!(f, "Computed threshold was infinite or NaN"),
-        }
-    }
 }
 
 #[cfg(test)]

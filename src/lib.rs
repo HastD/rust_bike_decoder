@@ -1,6 +1,5 @@
 pub mod cli;
 pub mod decoder;
-pub mod error;
 pub mod graphs;
 pub mod keys;
 pub mod ncw;

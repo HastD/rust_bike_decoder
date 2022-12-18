@@ -9,13 +9,12 @@ pub type Index = u32;
 pub type SparseErrorVector = SparseVector<ERROR_WEIGHT, ROW_LENGTH>;
 pub type ErrorVector = DenseVector<ROW_LENGTH>;
 
-#[derive(Error, Debug)]
-pub struct InvalidSupport(pub String);
-
-impl fmt::Display for InvalidSupport {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid support for sparse vector: {}", self.0)
-    }
+#[derive(Copy, Clone, Debug, Error)]
+pub enum InvalidSupport {
+    #[error("support indices must be in range 0..{0}")]
+    OutOfBounds(usize),
+    #[error("support indices must all be distinct")]
+    RepeatedIndex,
 }
 
 // Sparse vector of fixed weight and length over GF(2)
@@ -36,13 +35,13 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn validate(&self) -> Result<(), InvalidSupport> {
         for idx in self.0 {
             if idx >= self.length() {
-                return Err(InvalidSupport(format!("support indices must be in range 0..{}", LENGTH)));
+                return Err(InvalidSupport::OutOfBounds(LENGTH));
             }
         }
         for i in 0..WEIGHT {
             for j in (i+1)..WEIGHT {
                 if self.get(i) == self.get(j) {
-                    return Err(InvalidSupport(String::from("support indices must all be distinct")));
+                    return Err(InvalidSupport::RepeatedIndex);
                 }
             }
         }

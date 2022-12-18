@@ -1,5 +1,4 @@
 use crate::{
-    error::RuntimeError,
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
@@ -18,6 +17,7 @@ use std::{
     time::{Duration, Instant},
     thread,
 };
+use anyhow::{Context, Result};
 use rand::Rng;
 use rayon::prelude::*;
 use serde::Serialize;
@@ -61,7 +61,7 @@ pub fn trial_loop_parallel(
     settings: &Settings,
     tx_progress: mpsc::Sender<(usize, usize)>,
     tx_results: mpsc::Sender<(DecodingResult, usize)>,
-) -> Result<(), mpsc::SendError<(usize, usize)>> {
+) -> Result<()> {
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
@@ -70,32 +70,38 @@ pub fn trial_loop_parallel(
             (settings.trial_settings(), tx_results),
             |(settings, tx), _| trial_iteration(&settings, &tx)
         ).sum();
-        tx_progress.send((new_failure_count, new_trials))?;
+        tx_progress.send((new_failure_count, new_trials))
+            .context("Progress receiver should not be closed")?;
         trials_remaining -= new_trials;
     }
     Ok(())
 }
 
-fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<(), RuntimeError> {
+fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()> {
     if let Some(filename) = output {
-        if !overwrite && filename.try_exists()? && fs::metadata(filename)?.len() > 0 {
+        if !overwrite && filename.try_exists().context("Should be able to check existence of output file")?
+                && fs::metadata(filename).context("Should be able to access output file metadata")?.len() > 0 {
             // If file already exists and is nonempty, copy its contents to a backup file
-            fs::copy(filename, &format!("{}-backup-{}", filename.display(), Uuid::new_v4()))?;
+            fs::copy(filename, &format!("{}-backup-{}", filename.display(), Uuid::new_v4()))
+                .with_context(|| format!("Should be able to back up existing file at {}", filename.display()))?;
         }
-        File::create(filename)?.write_all(b"")?;
+        File::create(filename).context("Should be able to create output file")?
+            .write_all(b"").context("Should be able to write to output file")?;
     }
     Ok(())
 }
 
 /// Serializes data in JSON format to the specified path, or to standard output if path not provided.
-fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<(), RuntimeError>
+fn write_json<P>(output: Option<P>, data: &impl Serialize) -> Result<()>
     where P: AsRef<Path> + Copy
 {
     if let Some(filename) = output {
-        serde_json::to_writer(File::create(filename)?, data)?;
+        serde_json::to_writer(File::create(filename).context("Should be able to open output file")?, data)
+            .context("Should be able to serialize data to output file as JSON")?;
         File::options().append(true).open(filename)?.write_all(b"\n")?;
     } else {
-        serde_json::to_writer(io::stdout(), data)?;
+        serde_json::to_writer(io::stdout(), data)
+            .context("Should be able to serialize data to standard output as JSON")?;
         io::stdout().write_all(b"\n")?;
     }
     Ok(())
@@ -163,7 +169,7 @@ fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
 }
 
 fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataRecord,
-        settings: &Settings, runtime: Duration) -> Result<(), RuntimeError> {
+        settings: &Settings, runtime: Duration) -> Result<()> {
     data.add_to_failure_count(new_failure_count);
     data.add_to_trials(new_trials);
     data.update_thread_count();
@@ -183,7 +189,7 @@ pub fn record_trial_results(
     rx_results: mpsc::Receiver<(DecodingResult, usize)>,
     settings: Settings,
     start_time: Instant
-) -> Result<(usize, usize, Duration), RuntimeError> {
+) -> Result<(usize, usize, Duration)> {
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
     data.set_seed(crate::random::get_or_insert_global_seed(settings.seed()));
     'outer: loop {
@@ -219,7 +225,7 @@ pub fn record_trial_results(
     Ok((data.failure_count(), data.trials(), start_time.elapsed()))
 }
 
-pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
+pub fn run_cli_multithreaded(settings: Settings) -> Result<()> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -246,7 +252,7 @@ pub fn run_cli_multithreaded(settings: Settings) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
+pub fn run_cli_single_threaded(settings: Settings) -> Result<()> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -282,7 +288,7 @@ pub fn run_cli_single_threaded(settings: Settings) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-pub fn run_cli(settings: Settings) -> Result<(), RuntimeError> {
+pub fn run_cli(settings: Settings) -> Result<()> {
     if settings.parallel() {
         run_cli_multithreaded(settings)
     } else {
