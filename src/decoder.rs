@@ -7,15 +7,18 @@ use crate::threshold::THRESHOLD_CACHE;
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     let mut e_out = ErrorVector::zero();
     let mut ws = s.hamming_weight();
-    let mut black = [[false; BLOCK_LENGTH]; 2];
-    let mut gray = [[false; BLOCK_LENGTH]; 2];
-    for iter_index in 0..NB_ITER {
+    // Iteration 0
+    let thr = THRESHOLD_CACHE[ws];
+    let (black, gray) = bf_iter(key, s, &mut e_out, thr);
+    bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);
+    bf_masked_iter(key, s, &mut e_out, gray, BF_MASKED_THRESHOLD);
+    ws = s.hamming_weight();
+    if ws == 0 {
+        return (e_out, true);
+    }
+    for _ in 1..NB_ITER {
         let thr = THRESHOLD_CACHE[ws];
-        bf_iter(key, s, &mut e_out, &mut black, &mut gray, thr);
-        if iter_index == 0 {
-            bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);
-            bf_masked_iter(key, s, &mut e_out, gray, BF_MASKED_THRESHOLD);
-        }
+        bf_iter_no_mask(key, s, &mut e_out, thr);
         ws = s.hamming_weight();
         if ws == 0 {
             break;
@@ -55,26 +58,45 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     upc
 }
 
-// for some reason allowing the compiler to inline this function slows things down a lot
+// the compiler seems to make some bad optimization choices if allowed to inline this
 #[inline(never)]
 pub fn bf_iter(
     key: &Key,
     s: &mut Syndrome,
     e_out: &mut ErrorVector,
-    black: &mut [[bool; BLOCK_LENGTH]; 2],
-    gray: &mut [[bool; BLOCK_LENGTH]; 2],
     thr: u8
-) {
+) -> ([Vec<usize>; 2], [Vec<usize>; 2]) {
     let upc = unsatisfied_parity_checks(key, s);
     let gray_thr = thr - GRAY_THRESHOLD_DIFF;
+    let mut black = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
+    let mut gray = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
     for k in 0..2 {
         for i in 0..BLOCK_LENGTH {
             if upc[k][i] >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
-                black[k][i] = true;
+                black[k].push(i);
             } else if upc[k][i] >= gray_thr {
-                gray[k][i] = true;
+                gray[k].push(i);
+            }
+        }
+    }
+    (black, gray)
+}
+
+#[inline(never)]
+pub fn bf_iter_no_mask(
+    key: &Key,
+    s: &mut Syndrome,
+    e_out: &mut ErrorVector,
+    thr: u8
+) {
+    let upc = unsatisfied_parity_checks(key, s);
+    for k in 0..2 {
+        for i in 0..BLOCK_LENGTH {
+            if upc[k][i] >= thr {
+                e_out.flip(i + k*BLOCK_LENGTH);
+                s.recompute_flipped_bit(key, k, i);
             }
         }
     }
@@ -84,13 +106,13 @@ pub fn bf_masked_iter(
     key: &Key,
     s: &mut Syndrome,
     e_out: &mut ErrorVector,
-    mask: [[bool; BLOCK_LENGTH]; 2],
+    mask: [Vec<usize>; 2],
     thr: u8
 ) {
     let upc = unsatisfied_parity_checks(key, s);
     for k in 0..2 {
-        for i in 0..BLOCK_LENGTH {
-            if mask[k][i] && upc[k][i] >= thr {
+        for &i in mask[k].iter() {
+            if upc[k][i] >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
             }

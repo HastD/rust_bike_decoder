@@ -55,9 +55,7 @@ fn syndrome_e_out_consistent() {
         let mut s = Syndrome::from_sparse(&key, &e_in);
         let s_original = s.clone();
         let mut e_out = ErrorVector::zero();
-        let mut black = [[false; BLOCK_LENGTH]; 2];
-        let mut gray = [[false; BLOCK_LENGTH]; 2];
-        decoder::bf_iter(&key, &mut s, &mut e_out, &mut black, &mut gray, BF_THRESHOLD_MIN as u8);
+        let (black, _) = decoder::bf_iter(&key, &mut s, &mut e_out, BF_THRESHOLD_MIN as u8);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
         decoder::bf_masked_iter(&key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
@@ -140,10 +138,11 @@ fn main_multithreaded_test() {
     let data = parallel::run_multithreaded(settings).unwrap();
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed().unwrap(), seed);
+    assert_eq!(dbg!(data.failure_count()), dbg!(data.decoding_failures()).len());
     assert_eq!(data.thread_count(), Some(4));
-    assert_eq!(data.failure_count(), 2);
+    assert_eq!(data.failure_count(), 2, "failure_count() didn't match");
     let mut decoding_failures = data.decoding_failures().clone();
-    assert_eq!(data.decoding_failures().len(), 2);
+    assert_eq!(data.decoding_failures().len(), 2, "decoding_failures().len() didn't match");
     decoding_failures.sort_by_key(|df| df.thread());
     let df2 = decoding_failures.pop().unwrap();
     let df0 = decoding_failures.pop().unwrap();
