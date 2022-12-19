@@ -94,7 +94,8 @@ fn receive_progress_message() {
         .build().unwrap();
     let (tx_results, _) = mpsc::channel();
     let (tx_progress, rx) = mpsc::channel();
-    parallel::trial_loop(&settings, tx_progress, tx_results).unwrap();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
+    parallel::trial_loop(&settings, tx_progress, tx_results, pool).unwrap();
     let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(trials, 10);
     assert_eq!(failure_count, 0);
@@ -138,7 +139,7 @@ fn main_multithreaded_test() {
     let data = parallel::run_multithreaded(settings).unwrap();
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed().unwrap(), seed);
-    assert_eq!(dbg!(data.failure_count()), dbg!(data.decoding_failures()).len());
+    assert_eq!(data.failure_count(), data.decoding_failures().len());
     assert_eq!(data.thread_count(), Some(4));
     assert_eq!(data.failure_count(), 2, "failure_count() didn't match");
     let mut decoding_failures = data.decoding_failures().clone();

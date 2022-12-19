@@ -37,15 +37,16 @@ pub fn trial_loop(
     settings: &Settings,
     tx_progress: mpsc::Sender<(usize, usize)>,
     tx_results: mpsc::Sender<(DecodingResult, usize)>,
+    pool: rayon::ThreadPool,
 ) -> Result<()> {
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
         let new_trials = cmp::min(trials_remaining, settings.save_frequency());
-        let new_failure_count = (0..new_trials).into_par_iter().map_with(
+        let new_failure_count = pool.install(|| (0..new_trials).into_par_iter().map_with(
             (settings.trial_settings(), tx_results),
             |(settings, tx), _| trial_iteration(&settings, &tx, &mut custom_thread_rng())
-        ).sum();
+        ).sum());
         tx_progress.send((new_failure_count, new_trials))
             .context("Progress receiver should not be closed")?;
         trials_remaining -= new_trials;
@@ -61,26 +62,32 @@ pub fn record_trial_results(
 ) -> Result<DataRecord> {
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
     data.set_seed(get_or_insert_global_seed(settings.seed()));
-    'outer: loop {
-        for (result, thread) in rx_results.try_iter() {
-            if !result.success() {
-                application::handle_decoding_failure(result, thread, &mut data, &settings);
-                if data.decoding_failures().len() == settings.record_max() {
-                    break 'outer;
+    let mut rx_results_open = true;
+    let mut rx_progress_open = true;
+    'outer: while rx_results_open || rx_progress_open {
+        while rx_results_open {
+            match rx_results.try_recv() {
+                Ok((result, thread)) => {
+                    application::handle_decoding_failure(result, thread, &mut data, &settings);
+                    if data.decoding_failures().len() == settings.record_max() {
+                        break 'outer;
+                    }        
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    rx_results_open = false;
                 }
             }
         }
-        loop {
-            match rx_progress.try_recv() {
-                Ok((new_fc, new_trials)) => {
+        while rx_progress_open {
+            match rx_progress.recv_timeout(Duration::from_millis(100)) {
+                Ok((new_fc, new_trials)) =>
                     application::handle_progress(new_fc, new_trials, &mut data,
-                        &settings, start_time.elapsed())?;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(Duration::from_millis(100));
-                    break;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => { break 'outer; }
+                        &settings, start_time.elapsed())?,
+                Err(mpsc::RecvTimeoutError::Timeout) => break,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    rx_progress_open = false;
+                },
             }
         }
     }
@@ -106,7 +113,7 @@ pub fn run_multithreaded(settings: Settings) -> Result<DataRecord> {
     application::check_file_writable(settings.output_file(), settings.overwrite())?;
     // Set global PRNG seed used for generating data
     get_or_insert_global_seed(settings.seed());
-    rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build_global()?;
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build()?;
     // Set up channels to receive decoding results and progress updates
     let (tx_results, rx_results) = mpsc::channel();
     let (tx_progress, rx_progress) = mpsc::channel();
@@ -114,7 +121,7 @@ pub fn run_multithreaded(settings: Settings) -> Result<DataRecord> {
     let handler_thread = thread::spawn(move ||
         record_trial_results(rx_progress, rx_results, settings_clone, start_time)
     );
-    trial_loop(&settings, tx_progress, tx_results)?;
+    trial_loop(&settings, tx_progress, tx_results, pool)?;
     // Wait for data processing to finish
     let data = handler_thread.join()
         // If join() failed, propagate the panic from the thread
