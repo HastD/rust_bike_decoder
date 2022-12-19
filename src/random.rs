@@ -6,6 +6,7 @@
 use std::{
     cell::UnsafeCell,
     convert::TryFrom,
+    fmt,
     rc::Rc,
     sync::{Mutex, atomic::{AtomicUsize, Ordering}},
     thread_local,
@@ -37,6 +38,19 @@ pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
     let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
     *global_seed.get_or_insert(seed.unwrap_or_else(|| Seed::from_entropy()))
 }
+
+pub fn try_insert_global_seed(seed: Option<Seed>) -> Result<Seed, TryInsertGlobalSeedError> {
+    let global_seed = get_or_insert_global_seed(seed);
+    match seed {
+        None => Ok(global_seed),
+        Some(seed) if seed == global_seed => Ok(global_seed),
+        Some(_) => Err(TryInsertGlobalSeedError(global_seed)),
+    }
+}
+
+#[derive(Clone, Debug, Error)]
+#[error("try_insert_global_seed failed, GLOBAL_SEED already set to value: {0}")]
+pub struct TryInsertGlobalSeedError(Seed);
 
 pub fn global_thread_count() -> usize {
     GLOBAL_THREAD_COUNT.load(Ordering::SeqCst)
@@ -157,6 +171,12 @@ impl Serialize for Seed {
         where S: Serializer
     {
         hex::serde::serialize(self.0, serializer)
+    }
+}
+
+impl fmt::Display for Seed {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
     }
 }
 

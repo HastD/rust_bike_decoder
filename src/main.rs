@@ -19,9 +19,9 @@ use clap::Parser;
 
 pub fn run_application(settings: Settings) -> Result<DataRecord> {
     if settings.parallel() {
-        parallel::run_multithreaded(settings)
+        parallel::run_parallel(settings)
     } else {
-        application::run_single_threaded(settings)
+        application::run(settings)
     }
 }
 

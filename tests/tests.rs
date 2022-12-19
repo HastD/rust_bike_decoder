@@ -6,7 +6,7 @@ use bike_decoder::{
     parallel,
     parameters::*,
     random::{self, Seed},
-    settings::{SettingsBuilder, TrialSettings},
+    settings::{SettingsBuilder, Settings, TrialSettings},
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
@@ -95,7 +95,7 @@ fn receive_progress_message() {
     let (tx_results, _) = mpsc::channel();
     let (tx_progress, rx) = mpsc::channel();
     let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
-    parallel::trial_loop(&settings, tx_progress, tx_results, pool).unwrap();
+    parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
     let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(trials, 10);
     assert_eq!(failure_count, 0);
@@ -110,7 +110,7 @@ fn main_single_threaded_test() {
         .seed(Some(seed))
         .seed_index(Some(0))
         .build().unwrap();
-    let data = application::run_single_threaded(settings).unwrap();
+    let data = application::run(settings).unwrap();
     assert!(data.thread_count().is_none());
     assert_eq!(data.seed().unwrap(), seed);
     assert_eq!(data.failure_count(), 1);
@@ -126,17 +126,22 @@ fn main_single_threaded_test() {
     assert_eq!(df.e_source(), ErrorVectorSource::Random);
 }
 
+fn multithreaded_example_settings() -> Settings {
+    let seed = Seed::try_from("53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61".to_string()).unwrap();
+    SettingsBuilder::default()
+        .number_of_trials(200_000).silent(true)
+        .threads(4)
+        .seed(Some(seed))
+        .build().unwrap()
+}
+
 // This test has to run by itself or the global seeding causes problems
 #[test]
 #[ignore]
 fn main_multithreaded_test() {
-    let seed = Seed::try_from("53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61".to_string()).unwrap();
-    let settings = SettingsBuilder::default()
-        .number_of_trials(200_000).silent(true)
-        .threads(4)
-        .seed(Some(seed))
-        .build().unwrap();
-    let data = parallel::run_multithreaded(settings).unwrap();
+    let settings = multithreaded_example_settings();
+    let seed = settings.seed().unwrap();
+    let data = parallel::run_parallel(settings).unwrap();
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed().unwrap(), seed);
     assert_eq!(data.failure_count(), data.decoding_failures().len());
@@ -165,4 +170,11 @@ fn main_multithreaded_test() {
         [12,44,59,101,109,145,150,237,284,289,672,696,741,769,799,986,1117,1124]
     ).unwrap());
     assert_eq!(df2.e_source(), ErrorVectorSource::Random);
+}
+
+#[test]
+fn parallel_fail_if_seed_fail() {
+    let settings = multithreaded_example_settings();
+    random::get_or_insert_global_seed(None);
+    assert!(parallel::run_parallel(settings).unwrap_err().is::<random::TryInsertGlobalSeedError>());
 }

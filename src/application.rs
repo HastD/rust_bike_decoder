@@ -151,7 +151,7 @@ pub fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut D
     Ok(())
 }
 
-pub fn run_single_threaded(settings: Settings) -> Result<DataRecord> {
+pub fn run(settings: Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -160,7 +160,7 @@ pub fn run_single_threaded(settings: Settings) -> Result<DataRecord> {
     // Initialize object storing data to be recorded
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
     let seed = settings.seed().unwrap_or_else(|| Seed::from_entropy());
-    // Set global PRNG seed used for generating data
+    // Set PRNG seed used for generating data
     data.set_seed(seed);
     let seed_index = settings.seed_index().unwrap_or_else(|| current_thread_id());
     let mut rng = get_rng_from_seed(seed, seed_index);
