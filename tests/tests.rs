@@ -10,7 +10,8 @@ use bike_decoder::{
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
-use std::{sync::mpsc, time::Duration};
+use std::time::Duration;
+use crossbeam_channel::{unbounded as channel};
 use rand::{SeedableRng, rngs::StdRng};
 
 const TRIALS: usize = 10000;
@@ -79,7 +80,7 @@ fn guaranteed_decoding_failure() {
 #[test]
 fn receive_decoding_failure() {
     let settings = guaranteed_failure_settings();
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = channel();
     let mut rng = random::custom_thread_rng();
     parallel::trial_iteration(&settings, &tx, &mut rng);
     let (result, thread_id) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
@@ -92,8 +93,8 @@ fn receive_progress_message() {
     let settings = SettingsBuilder::default()
         .number_of_trials(10).threads(4)
         .build().unwrap();
-    let (tx_results, _) = mpsc::channel();
-    let (tx_progress, rx) = mpsc::channel();
+    let (tx_results, _) = channel();
+    let (tx_progress, rx) = channel();
     let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
     parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
     let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();

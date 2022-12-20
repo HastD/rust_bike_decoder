@@ -5,12 +5,9 @@ use crate::{
     record::{DecodingResult, DataRecord},
     settings::{Settings, TrialSettings},
 };
-use std::{
-    cmp,
-    sync::mpsc::{Sender, Receiver, RecvTimeoutError, TryRecvError, channel},
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
+use crossbeam_channel::{Sender, Receiver, RecvTimeoutError, TryRecvError, unbounded as channel};
 use rand::Rng;
 use rayon::prelude::*;
 
@@ -41,10 +38,10 @@ pub fn trial_loop(
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
-        let new_trials = cmp::min(trials_remaining, settings.save_frequency());
+        let new_trials = settings.save_frequency().min(trials_remaining);
         let new_failure_count = pool.install(|| (0..new_trials).into_par_iter().map_with(
             (settings.trial_settings(), tx_results),
-            |(settings, tx), _| trial_iteration(&settings, &tx, &mut custom_thread_rng())
+            |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng())
         ).sum());
         tx_progress.send((new_failure_count, new_trials))
             .context("Progress receiver should not be closed")?;
@@ -69,11 +66,11 @@ pub fn record_trial_results(
         while rx_results_open {
             match rx_results.try_recv() {
                 Ok((result, thread)) => {
-                    application::handle_decoding_failure(result, thread, &mut data, &settings);
+                    application::handle_decoding_failure(result, thread, &mut data, settings);
                     if data.decoding_failures().len() == settings.record_max() {
                         // Max number of decoding failures recorded, short-circuit outer loop
                         break 'outer;
-                    }        
+                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
@@ -87,7 +84,7 @@ pub fn record_trial_results(
             match rx_progress.recv_timeout(Duration::from_millis(100)) {
                 Ok((new_fc, new_trials)) =>
                     application::handle_progress(new_fc, new_trials, &mut data,
-                        &settings, start_time.elapsed())?,
+                        settings, start_time.elapsed())?,
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
                     // progress channel closed, flag this loop to be skipped
@@ -101,7 +98,7 @@ pub fn record_trial_results(
     // Receive and handle all remaining progress updates
     for (new_fc, new_trials) in rx_progress {
         application::handle_progress(new_fc, new_trials, &mut data,
-            &settings, start_time.elapsed())?;
+            settings, start_time.elapsed())?;
     }
     // trial_loop has now finished and all progress updates have been handled
     data.set_thread_count(global_thread_count());
