@@ -9,7 +9,6 @@ use crate::{
     syndrome::Syndrome,
 };
 use std::{
-    cmp,
     convert::AsRef,
     fs::{self, File},
     io::{self, Write},
@@ -47,7 +46,7 @@ pub fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()>
         if !overwrite && filename.try_exists().context("Should be able to check existence of output file")?
                 && fs::metadata(filename).context("Should be able to access output file metadata")?.len() > 0 {
             // If file already exists and is nonempty, copy its contents to a backup file
-            fs::copy(filename, &format!("{}-backup-{}", filename.display(), Uuid::new_v4()))
+            fs::copy(filename, format!("{}-backup-{}", filename.display(), Uuid::new_v4()))
                 .with_context(|| format!("Should be able to back up existing file at {}", filename.display()))?;
         }
         File::create(filename).context("Should be able to create output file")?
@@ -159,15 +158,15 @@ pub fn run(settings: Settings) -> Result<DataRecord> {
     check_file_writable(settings.output_file(), settings.overwrite())?;
     // Initialize object storing data to be recorded
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    let seed = settings.seed().unwrap_or_else(|| Seed::from_entropy());
+    let seed = settings.seed().unwrap_or_else(Seed::from_entropy);
     // Set PRNG seed used for generating data
     data.set_seed(seed);
-    let seed_index = settings.seed_index().unwrap_or_else(|| current_thread_id());
+    let seed_index = settings.seed_index().unwrap_or_else(current_thread_id);
     let mut rng = get_rng_from_seed(seed, seed_index);
     let mut trials_remaining = settings.number_of_trials();
     while trials_remaining > 0 {
         let mut new_failure_count = 0;
-        let new_trials = cmp::min(trials_remaining, settings.save_frequency());
+        let new_trials = settings.save_frequency().min(trials_remaining);
         for _ in 0..new_trials {
             let result = decoding_trial(settings.trial_settings(), &mut rng);
             if !result.success() {

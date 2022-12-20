@@ -3,10 +3,7 @@ use crate::{
     ncw::NearCodewordClass,
     random::Seed,
 };
-use std::{
-    cmp,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use derive_builder::Builder;
@@ -89,7 +86,7 @@ impl Settings {
                 args.ncw,
                 args.ncw_overlap
             )?,
-            save_frequency: cmp::max(Self::MIN_SAVE_FREQUENCY, args.savefreq.unwrap_or(args.number) as usize),
+            save_frequency: (args.savefreq.unwrap_or(args.number) as usize).max(Self::MIN_SAVE_FREQUENCY),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
             seed: args.seed.map(Seed::try_from).transpose()
@@ -97,7 +94,7 @@ impl Settings {
             seed_index: args.seed_index,
             threads: args.threads.map_or_else(
                 || if args.parallel { 0 } else { 1 },
-                |threads| cmp::min(cmp::max(threads, 1), Self::MAX_THREAD_COUNT)),
+                |threads| threads.clamp(1, Self::MAX_THREAD_COUNT)),
             output_file: args.output.map(PathBuf::from),
             overwrite: args.overwrite,
             silent: false,

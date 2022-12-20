@@ -1,7 +1,7 @@
 use crate::parameters::*;
 use crate::vectors::{DenseVector, SparseErrorVector, ErrorVector};
 use crate::keys::Key;
-use std::{cmp, fmt, ops::Add};
+use std::{fmt, ops::Add};
 
 // Note: syndromes are padded out to 2*SIZE_AVX so they can be passed to
 // code in decoder.rs that uses AVX2 instructions.
@@ -124,14 +124,14 @@ impl Add for Syndrome {
     }
 }
 
-impl cmp::PartialEq for Syndrome {
+impl PartialEq for Syndrome {
     // Equality ignores the extra buffer space
     fn eq(&self, other: &Self) -> bool {
         self.contents() == other.contents()
     }
 }
 
-impl cmp::Eq for Syndrome { }
+impl Eq for Syndrome { }
 
 impl fmt::Display for Syndrome {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

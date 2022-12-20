@@ -36,7 +36,7 @@ pub fn global_seed() -> Option<Seed> {
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
     let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
-    *global_seed.get_or_insert(seed.unwrap_or_else(|| Seed::from_entropy()))
+    *global_seed.get_or_insert(seed.unwrap_or_else(Seed::from_entropy))
 }
 
 pub fn try_insert_global_seed(seed: Option<Seed>) -> Result<Seed, TryInsertGlobalSeedError> {
@@ -53,11 +53,11 @@ pub fn try_insert_global_seed(seed: Option<Seed>) -> Result<Seed, TryInsertGloba
 pub struct TryInsertGlobalSeedError(Seed);
 
 pub fn global_thread_count() -> usize {
-    GLOBAL_THREAD_COUNT.load(Ordering::SeqCst)
+    GLOBAL_THREAD_COUNT.load(Ordering::Relaxed)
 }
 
 thread_local! {
-    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
+    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
     static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
         let seed = get_or_insert_global_seed(None);
         let rng = get_rng_from_seed(seed, current_thread_id());

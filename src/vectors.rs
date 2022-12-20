@@ -1,7 +1,7 @@
 use crate::parameters::*;
 use rand::{Rng, distributions::{Distribution, Uniform}};
 use serde::{Serialize, Serializer, Deserialize};
-use std::{cmp, fmt};
+use std::fmt;
 use thiserror::Error;
 
 pub type Index = u32;
@@ -113,7 +113,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 
     pub fn random_sorted<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let mut supp = [0 as Index; WEIGHT];
-        for i in 0..WEIGHT as usize {
+        for i in 0..WEIGHT {
             // Randomly generate element in the appropriate range
             let rand = rng.gen_range(0..LENGTH-i);
             // Insert in sorted order
@@ -247,7 +247,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         for i in 0..WEIGHT {
             for j in i+1..WEIGHT {
                 let diff = self.get(j).abs_diff(self.get(i));
-                let delta = cmp::min(diff, length.wrapping_sub(diff));
+                let delta = diff.min(length.wrapping_sub(diff));
                 let count = &mut shift_counts[delta as usize];
                 *count += 1;
                 if *count >= threshold {
@@ -278,14 +278,14 @@ impl<const W: usize, const L: usize> Serialize for SparseVector<W, L> {
     }
 }
 
-impl<const W: usize, const L: usize> cmp::PartialEq for SparseVector<W, L> {
+impl<const W: usize, const L: usize> PartialEq for SparseVector<W, L> {
     // Supports may or may not be sorted, so we have to sort to test equality
     fn eq(&self, other: &Self) -> bool {
         self.clone().sorted().0 == other.clone().sorted().0
     }
 }
 
-impl<const W: usize, const L: usize> cmp::Eq for SparseVector<W, L> { }
+impl<const W: usize, const L: usize> Eq for SparseVector<W, L> { }
 
 impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -295,7 +295,7 @@ impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
 }
 
 // Dense vectors of fixed length over GF(2)
-#[derive(Debug, Clone, cmp::PartialEq, cmp::Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DenseVector<const LENGTH: usize>([u8; LENGTH]);
 
 impl<const LENGTH: usize> DenseVector<LENGTH> {

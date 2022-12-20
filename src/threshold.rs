@@ -2,7 +2,6 @@ use crate::parameters::*;
 use lazy_static::lazy_static;
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
-use std::cmp;
 use thiserror::Error;
 
 lazy_static! {
@@ -24,7 +23,7 @@ pub fn compute_x(r: usize, d: usize, t: usize) -> Result<f64, ThresholdError> {
     let w = 2*d;
     let n_minus_w = n - w;
     let mut x_part = BigInt::from(0);
-    for l in (3..cmp::min(t, w)).step_by(2) {
+    for l in (3 .. t.min(w)).step_by(2) {
         x_part += (l - 1) * big_binomial(w, l) * big_binomial(n_minus_w, t - l);
     }
     let x = BigRational::new(r * x_part, big_binomial(n, t)).to_f64();
@@ -36,9 +35,9 @@ fn threshold_constants(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
 -> Result<(f64, f64), ThresholdError> {
     let n = 2*r;
     let w = 2*d;
-    let x = x.map_or_else(|| compute_x(r, d, t), |x| Ok(x))?;
+    let x = x.map_or_else(|| compute_x(r, d, t), Ok)?;
     let pi1 = (ws as f64 + x) / (t * d) as f64;
-    let pi0 = ((w as usize * ws) as f64 - x) / ((n - t) * d) as f64;
+    let pi0 = ((w * ws) as f64 - x) / ((n - t) * d) as f64;
     Ok((pi0, pi1))
 }
 
@@ -46,7 +45,7 @@ pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f
 -> Result<u8, ThresholdError> {
     if ws == 0 {
         return Ok(BF_THRESHOLD_MIN);
-    } else if ws > r as usize {
+    } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
     let n = 2*r;
@@ -59,7 +58,7 @@ pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f
     }
     let threshold = u8::try_from(threshold).or(Err(ThresholdError::OverflowError))?;
     // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
-    let threshold = cmp::max(threshold, BF_THRESHOLD_MIN);
+    let threshold = threshold.max(BF_THRESHOLD_MIN);
     Ok(threshold)
 }
 
@@ -67,7 +66,7 @@ pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
 -> Result<u8, ThresholdError> {
     if ws == 0 {
         return Ok(BF_THRESHOLD_MIN);
-    } else if ws > r as usize {
+    } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
     let n = 2*r;
@@ -80,7 +79,7 @@ pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
     if threshold.is_finite() {
         let threshold = u8::try_from(threshold as u32).or(Err(ThresholdError::OverflowError))?;
         // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
-        let threshold = cmp::max(threshold, BF_THRESHOLD_MIN);
+        let threshold = threshold.max(BF_THRESHOLD_MIN);
         Ok(threshold)
     } else {
         Err(ThresholdError::Infinite)
@@ -133,9 +132,9 @@ mod tests {
             1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
         ];
         let x = compute_x(r, d, t).unwrap();
-        for ws in 0..=r as usize {
+        for ws in 0..=r {
             let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
-            assert_eq!(thresh, cmp::max(thresholds_no_min[ws as usize], BF_THRESHOLD_MIN));
+            assert_eq!(thresh, thresholds_no_min[ws].max(BF_THRESHOLD_MIN));
             assert_eq!(thresh, THRESHOLD_CACHE[ws]);
         }
     }

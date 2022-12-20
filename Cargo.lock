@@ -38,6 +38,7 @@ dependencies = [
  "anyhow",
  "clap 4.0.29",
  "criterion",
+ "crossbeam-channel",
  "derive_builder",
  "hex",
  "lazy_static",
