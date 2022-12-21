@@ -1,8 +1,9 @@
 use crate::{
-    keys::{Key, KeyFilter, WeakType},
+    keys::{Key, KeyFilter, KeyFilterError},
     ncw::NearCodewordClass,
     random::Seed,
 };
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -17,8 +18,9 @@ pub struct Args {
     #[arg(short, long, default_value_t=0, value_parser=clap::value_parser!(i8).range(-1..=3),
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
     weak_keys: i8,
-    #[arg(short='T',long,default_value_t=3,requires="weak_keys",help="Weak key threshold")]
-    weak_key_threshold: usize,
+    #[arg(short='T', long, default_value_t=3, value_parser=clap::value_parser!(u16).range(3..),
+        requires="weak_keys", help="Weak key threshold")]
+    weak_key_threshold: u16,
     #[arg(long, help="Always use the specified key (in JSON format)")]
     fixed_key: Option<String>,
     #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)")]
@@ -51,7 +53,7 @@ pub struct Args {
 pub struct Settings {
     number_of_trials: usize,
     #[builder(default)] trial_settings: TrialSettings,
-    #[builder(default)] save_frequency: usize,
+    #[builder(default)] save_frequency: Option<NonZeroUsize>,
     #[builder(default="10000")] record_max: usize,
     #[builder(default)] verbose: u8,
     #[builder(default)] seed: Option<Seed>,
@@ -70,23 +72,15 @@ impl Settings {
         let settings = Self {
             number_of_trials: args.number as usize,
             trial_settings: TrialSettings::new(
-                match args.weak_keys {
-                    0 => KeyFilter::Any,
-                    -1 => KeyFilter::NonWeak(args.weak_key_threshold),
-                    1 => KeyFilter::Weak(WeakType::Type1, args.weak_key_threshold),
-                    2 => KeyFilter::Weak(WeakType::Type2, args.weak_key_threshold),
-                    3 => KeyFilter::Weak(WeakType::Type3, args.weak_key_threshold),
-                    _ => {
-                        return Err(SettingsError::InvalidFilter.into());
-                    }
-                },
+                KeyFilter::try_from((args.weak_keys, args.weak_key_threshold.into()))?,
                 args.fixed_key.as_deref().map(serde_json::from_str).transpose()
                     .context("--fixed-key should be valid JSON representing a key")?
                     .map(Key::sorted),
                 args.ncw,
                 args.ncw_overlap
             )?,
-            save_frequency: (args.savefreq.unwrap_or(args.number) as usize).max(Self::MIN_SAVE_FREQUENCY),
+            save_frequency: NonZeroUsize::new((args.savefreq.unwrap_or_default() as usize)
+                .max(Self::MIN_SAVE_FREQUENCY)),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
             seed: args.seed.map(Seed::try_from).transpose()
@@ -139,11 +133,7 @@ impl Settings {
 
     #[inline]
     pub fn save_frequency(&self) -> usize {
-        if self.save_frequency == 0 {
-            self.number_of_trials
-        } else {
-            self.save_frequency
-        }
+        self.save_frequency.map_or(self.number_of_trials, usize::from)
     }
 
     #[inline]
@@ -246,8 +236,8 @@ impl TrialSettings {
 
 #[derive(Copy, Clone, Debug, Error)]
 pub enum SettingsError {
-    #[error("weak_key_filter must be in {{-1, 0, 1, 2, 3}}")]
-    InvalidFilter,
+    #[error(transparent)]
+    InvalidFilter(#[from] KeyFilterError),
     #[error("fixed_key does not match key filter")]
     InvalidFixedKey,
     #[error("ncw_overlap requires ncw_class to be set")]
@@ -288,7 +278,7 @@ mod tests {
             [35,108,119,159,160,163,221,246,249,286,310,360,484,559,580]).unwrap()));
         assert_eq!(settings.trial_settings.ncw_class, Some(NearCodewordClass::C));
         assert_eq!(settings.trial_settings.ncw_overlap, Some(7));
-        assert_eq!(settings.save_frequency, Settings::MIN_SAVE_FREQUENCY);
+        assert_eq!(settings.save_frequency(), Settings::MIN_SAVE_FREQUENCY);
         assert_eq!(settings.record_max, 123);
         assert_eq!(settings.verbose, 2);
         assert_eq!(settings.seed, Some(Seed::from(
@@ -309,7 +299,7 @@ mod tests {
         assert_eq!(settings, Settings {
             number_of_trials: 12345,
             trial_settings: TrialSettings::default(),
-            save_frequency: 0,
+            save_frequency: None,
             record_max: 10000,
             verbose: 0,
             seed: None,

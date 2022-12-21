@@ -92,30 +92,30 @@ impl Default for CustomThreadRng {
 impl RngCore for CustomThreadRng {
     #[inline(always)]
     fn next_u32(&mut self) -> u32 {
-        // SAFETY: We must make sure to stop using `rng` before anyone else
-        // creates another mutable reference
+        // SAFETY: self.rng is !Sync, hence can't be concurrently mutated. No
+        // other references to self.rng exist because we never give any out.
         let rng = unsafe { &mut *self.rng.get() };
         rng.next_u32()
     }
 
     #[inline(always)]
     fn next_u64(&mut self) -> u64 {
-        // SAFETY: We must make sure to stop using `rng` before anyone else
-        // creates another mutable reference
+        // SAFETY: self.rng is !Sync, hence can't be concurrently mutated. No
+        // other references to self.rng exist because we never give any out.
         let rng = unsafe { &mut *self.rng.get() };
         rng.next_u64()
     }
 
     fn fill_bytes(&mut self, dest: &mut [u8]) {
-        // SAFETY: We must make sure to stop using `rng` before anyone else
-        // creates another mutable reference
+        // SAFETY: self.rng is !Sync, hence can't be concurrently mutated. No
+        // other references to self.rng exist because we never give any out.
         let rng = unsafe { &mut *self.rng.get() };
         rng.fill_bytes(dest)
     }
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        // SAFETY: We must make sure to stop using `rng` before anyone else
-        // creates another mutable reference
+        // SAFETY: self.rng is !Sync, hence can't be concurrently mutated. No
+        // other references to self.rng exist because we never give any out.
         let rng = unsafe { &mut *self.rng.get() };
         rng.try_fill_bytes(dest)
     }

@@ -30,9 +30,17 @@ uuid = { version = "1.2.2", features = ["v4", "fast-rng", "macro-diagnostics"] }
 
 [profile.dev]
 opt-level = 1
+incremental = true
+
+[profile.release]
+incremental = true
 
 [profile.test]
 opt-level = 2
+incremental = true
+
+[profile.bench]
+incremental = true
 
 [dev-dependencies]
 criterion = "0.4"

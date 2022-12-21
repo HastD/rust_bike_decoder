@@ -2,7 +2,8 @@ use crate::vectors::{Index, SparseVector, InvalidSupport};
 use crate::parameters::*;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
-use std::fmt;
+use std::{convert::TryFrom, fmt};
+use thiserror::Error;
 
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
@@ -15,6 +16,14 @@ pub struct Key {
 impl From<(CyclicBlock, CyclicBlock)> for Key {
     fn from((h0, h1): (CyclicBlock, CyclicBlock)) -> Self {
         Self { h0, h1 }
+    }
+}
+
+impl TryFrom<([Index; BLOCK_WEIGHT], [Index; BLOCK_WEIGHT])> for Key {
+    type Error = InvalidSupport;
+
+    fn try_from((h0_supp, h1_supp): ([Index; BLOCK_WEIGHT], [Index; BLOCK_WEIGHT])) -> Result<Self, Self::Error> {
+        Key::from_support(h0_supp, h1_supp)
     }
 }
 
@@ -205,6 +214,35 @@ impl Default for KeyFilter {
     fn default() -> Self {
         Self::Any
     }
+}
+
+impl TryFrom<(i8, usize)> for KeyFilter {
+    type Error = KeyFilterError;
+
+    fn try_from((filter, threshold): (i8, usize)) -> Result<Self, KeyFilterError> {
+        if filter != 0 && threshold < 2 {
+            return Err(KeyFilterError::InvalidThreshold);
+        } else if threshold >= BLOCK_WEIGHT {
+            // Thresholds >= BLOCK_WEIGHT are tautological and impose no conditions
+            return Ok(Self::Any);
+        }
+        match filter {
+            0 => Ok(Self::Any),
+            -1 => Ok(Self::NonWeak(threshold)),
+            1 => Ok(Self::Weak(WeakType::Type1, threshold)),
+            2 => Ok(Self::Weak(WeakType::Type2, threshold)),
+            3 => Ok(Self::Weak(WeakType::Type3, threshold)),
+            _ => Err(KeyFilterError::InvalidFilter)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+pub enum KeyFilterError {
+    #[error("weak key filter must be in {{-1, 0, 1, 2, 3}}")]
+    InvalidFilter,
+    #[error("weak key threshold must be >= 2")]
+    InvalidThreshold,
 }
 
 #[cfg(test)]

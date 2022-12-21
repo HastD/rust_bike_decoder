@@ -125,6 +125,9 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
+        if thresh >= WEIGHT {
+            return Self::random(rng);
+        }
         let r = LENGTH as Index;
         let delta = rng.gen_range(1..=r/2);
         let shift = rng.gen_range(0..r);
@@ -142,6 +145,9 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
+        if thresh >= WEIGHT {
+            return Self::random(rng);
+        }
         let s = WEIGHT - thresh - 1;
         let (r, d) = (LENGTH as Index, WEIGHT as Index);
         let mut o = [0 as Index; WEIGHT];
@@ -179,6 +185,9 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> (Self, Self)
         where R: Rng + ?Sized
     {
+        if thresh >= WEIGHT {
+            return (Self::random(rng), Self::random(rng));
+        }
         let r = LENGTH as Index;
         let shift = rng.gen_range(0..r);
         let mut h0 = [0 as Index; WEIGHT];
@@ -212,13 +221,13 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let mut shifts = [[0 as Index; WEIGHT]; WEIGHT];
         for i in 0..WEIGHT {
             let self_i = self.get(i);
-            let length_plus_self_i = length.wrapping_add(self_i);
+            let length_plus_self_i = length + self_i;
             for j in 0..WEIGHT {
                 let other_j = other.get(j);
                 shifts[i][j] = if self_i < other_j {
-                    length_plus_self_i.wrapping_sub(other_j)
+                    length_plus_self_i - other_j
                 } else {
-                    self_i.wrapping_sub(other_j)
+                    self_i - other_j
                 };  // this equals (self_i - other_j) % length
                     // since 0 <= self_i, other_j < N.
             }
@@ -247,7 +256,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         for i in 0..WEIGHT {
             for j in i+1..WEIGHT {
                 let diff = self.get(j).abs_diff(self.get(i));
-                let delta = diff.min(length.wrapping_sub(diff));
+                let delta = diff.min(length - diff);
                 let count = &mut shift_counts[delta as usize];
                 *count += 1;
                 if *count >= threshold {
