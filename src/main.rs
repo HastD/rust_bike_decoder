@@ -12,16 +12,16 @@ pub mod syndrome;
 pub mod threshold;
 pub mod vectors;
 
-use crate::settings::{Args, Settings};
 use crate::record::DataRecord;
+use crate::settings::{Args, Settings};
 use anyhow::Result;
 use clap::Parser;
 
 pub fn run_application(settings: &Settings) -> Result<DataRecord> {
     if settings.parallel() {
-        parallel::run_parallel(&settings)
+        parallel::run_parallel(settings)
     } else {
-        application::run(&settings)
+        application::run(settings)
     }
 }
 

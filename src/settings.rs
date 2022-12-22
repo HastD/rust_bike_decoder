@@ -3,8 +3,7 @@ use crate::{
     ncw::NearCodewordClass,
     random::Seed,
 };
-use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::{num::NonZeroUsize, path::PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use derive_builder::Builder;
@@ -59,9 +58,7 @@ pub struct Settings {
     #[builder(default)] seed: Option<Seed>,
     #[builder(default)] seed_index: Option<usize>,
     #[builder(default="1")] threads: usize,
-    #[builder(default)] output_file: Option<PathBuf>,
-    #[builder(default="false")] overwrite: bool,
-    #[builder(default="false")] silent: bool,
+    #[builder(default)] output: OutputTo,
 }
 
 impl Settings {
@@ -72,7 +69,7 @@ impl Settings {
         let settings = Self {
             number_of_trials: args.number as usize,
             trial_settings: TrialSettings::new(
-                KeyFilter::try_from((args.weak_keys, args.weak_key_threshold.into()))?,
+                KeyFilter::new(args.weak_keys, args.weak_key_threshold.into())?,
                 args.fixed_key.as_deref().map(serde_json::from_str).transpose()
                     .context("--fixed-key should be valid JSON representing a key")?
                     .map(Key::sorted),
@@ -89,9 +86,10 @@ impl Settings {
             threads: args.threads.map_or_else(
                 || if args.parallel { 0 } else { 1 },
                 |threads| threads.clamp(1, Self::MAX_THREAD_COUNT)),
-            output_file: args.output.map(PathBuf::from),
-            overwrite: args.overwrite,
-            silent: false,
+            output: match args.output {
+                Some(path) => OutputTo::File(path.into(), args.overwrite),
+                None => OutputTo::Stdout,
+            },
         };
         Ok(settings)
     }
@@ -167,18 +165,8 @@ impl Settings {
     }
 
     #[inline]
-    pub fn output_file(&self) -> Option<&Path> {
-        self.output_file.as_deref()
-    }
-
-    #[inline]
-    pub fn overwrite(&self) -> bool {
-        self.overwrite
-    }
-
-    #[inline]
-    pub fn silent(&self) -> bool {
-        self.silent
+    pub fn output(&self) -> &OutputTo {
+        &self.output
     }
 }
 
@@ -234,6 +222,28 @@ impl TrialSettings {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutputTo {
+    Stdout,
+    File(PathBuf, bool),
+    Void,
+}
+
+impl Default for OutputTo {
+    fn default() -> Self {
+        Self::Stdout
+    }
+}
+
+impl OutputTo {
+    pub fn is_file(&self) -> bool {
+        match *self {
+            Self::File(_, _) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Error)]
 pub enum SettingsError {
     #[error(transparent)]
@@ -265,7 +275,8 @@ mod tests {
             parallel: true,
             recordmax: 123.4,
             savefreq: Some(50.0),
-            seed: Some("874a5940435d8a5462d8579af9f4cad2a737880dfb13620c5257a60ffaaae6cf".to_string()),
+            seed: Some("874a5940435d8a5462d8579af9f4cad2a737880dfb13620c5257a60ffaaae6cf"
+                .to_string()),
             seed_index: None,
             threads: Some(usize::MAX),
             verbose: 2,
@@ -281,20 +292,19 @@ mod tests {
         assert_eq!(settings.save_frequency(), Settings::MIN_SAVE_FREQUENCY);
         assert_eq!(settings.record_max, 123);
         assert_eq!(settings.verbose, 2);
-        assert_eq!(settings.seed, Some(Seed::from(
+        assert_eq!(settings.seed, Some(Seed::new(
             [135,74,89,64,67,93,138,84,98,216,87,154,249,244,202,210,
             167,55,136,13,251,19,98,12,82,87,166,15,250,170,230,207])));
         assert!(settings.seed_index().is_none());
         assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
-        assert_eq!(settings.output_file, Some(PathBuf::from("test/path/to/file.json")));
-        assert_eq!(settings.overwrite, true);
-        assert_eq!(settings.silent, false);
+        assert_eq!(settings.output, OutputTo::File(PathBuf::from("test/path/to/file.json"), true));
     }
 
     #[test]
     fn settings_builder() {
         let settings = SettingsBuilder::default()
-            .number_of_trials(12345).silent(true)
+            .number_of_trials(12345)
+            .output(OutputTo::Void)
             .build().unwrap();
         assert_eq!(settings, Settings {
             number_of_trials: 12345,
@@ -305,9 +315,7 @@ mod tests {
             seed: None,
             seed_index: None,
             threads: 1,
-            output_file: None,
-            overwrite: false,
-            silent: true,
+            output: OutputTo::Void,
         });
     }
 }

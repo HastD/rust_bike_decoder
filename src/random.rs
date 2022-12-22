@@ -5,7 +5,6 @@
 
 use std::{
     cell::UnsafeCell,
-    convert::TryFrom,
     fmt,
     rc::Rc,
     sync::{Mutex, atomic::{AtomicUsize, Ordering}},
@@ -31,11 +30,11 @@ lazy_static! {
 }
 
 pub fn global_seed() -> Option<Seed> {
-    *GLOBAL_SEED.lock().expect("Must be able to access global seed")
+    *GLOBAL_SEED.lock().expect("Should have acquired global seed lock")
 }
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
-    let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
+    let mut global_seed = GLOBAL_SEED.lock().expect("Should have acquired global seed lock");
     *global_seed.get_or_insert(seed.unwrap_or_else(Seed::from_entropy))
 }
 
@@ -127,17 +126,14 @@ type SeedInner = [u8; 32];
 pub struct Seed(SeedInner);
 
 impl Seed {
+    pub fn new(arr: SeedInner) -> Self {
+        Self(arr)
+    }
+
     pub fn from_entropy() -> Self {
         let mut buf = SeedInner::default();
         OsRng.fill_bytes(&mut buf);
         Seed(buf)
-    }
-}
-
-impl From<SeedInner> for Seed {
-    #[inline]
-    fn from(arr: SeedInner) -> Self {
-        Self(arr)
     }
 }
 

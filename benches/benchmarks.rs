@@ -1,12 +1,13 @@
 use bike_decoder::{
-    application::{decoding_failure_trial, handle_decoding_failure},
+    application::{self, decoding_failure_trial, handle_decoding_failure},
     decoder::{bgf_decoder, unsatisfied_parity_checks},
     keys::{Key, KeyFilter},
     ncw::{TaggedErrorVector, NearCodewordClass},
+    parallel,
     parameters::*,
     random::{custom_thread_rng, global_seed},
     record::DataRecord,
-    settings::{SettingsBuilder, TrialSettings},
+    settings::{SettingsBuilder, TrialSettings, OutputTo},
     syndrome::Syndrome,
     vectors::SparseErrorVector,
     threshold::{compute_x, exact_threshold_ineq},
@@ -15,6 +16,25 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
 use rand::Rng;
 use crossbeam_channel::{unbounded as channel};
+
+pub fn group_application(c: &mut Criterion) {
+    c.bench_function("run_application", |b| {
+        let settings = SettingsBuilder::default()
+            .number_of_trials(10_000)
+            .output(OutputTo::Void)
+            .build().unwrap();
+        b.iter(|| black_box(application::run(&settings)))
+    });
+
+    c.bench_function("run_parallel", |b| {
+        let settings = SettingsBuilder::default()
+            .number_of_trials(10_000)
+            .threads(0)
+            .output(OutputTo::Void)
+            .build().unwrap();
+        b.iter(|| black_box(parallel::run_parallel(&settings)))
+    });
+}
 
 pub fn group_decoder(c: &mut Criterion) {
     c.bench_function("decoding_trial", |b| {
@@ -32,7 +52,7 @@ pub fn group_decoder(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(bgf_decoder(&inputs.0, &mut inputs.1)),
+            |(key, syn)| black_box(bgf_decoder(key, syn)),
             BatchSize::SmallInput
         )
     });
@@ -45,7 +65,7 @@ pub fn group_decoder(c: &mut Criterion) {
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
             },
-            |inputs| black_box(unsatisfied_parity_checks(&inputs.0, &mut inputs.1)),
+            |(key, syn)| black_box(unsatisfied_parity_checks(key, syn)),
             BatchSize::SmallInput
         )
     });
@@ -69,10 +89,10 @@ pub fn group_randgen(c: &mut Criterion) {
                 let l = rng.gen_range(0..=BLOCK_WEIGHT);
                 (key, l)
             },
-            |inputs| black_box((
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::C, inputs.1, &mut rng),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::N, inputs.1, &mut rng),
-                TaggedErrorVector::near_codeword(&inputs.0, NearCodewordClass::TwoN, inputs.1, &mut rng),
+            |(key, l)| black_box((
+                TaggedErrorVector::near_codeword(key, NearCodewordClass::C, *l, &mut rng),
+                TaggedErrorVector::near_codeword(key, NearCodewordClass::N, *l, &mut rng),
+                TaggedErrorVector::near_codeword(key, NearCodewordClass::TwoN, *l, &mut rng),
             )),
             BatchSize::SmallInput
         )
@@ -88,7 +108,7 @@ pub fn group_syndrome(c: &mut Criterion) {
                 let e_supp = SparseErrorVector::random(&mut rng);
                 (key, e_supp)
             },
-            |inputs| black_box(Syndrome::from_sparse(&inputs.0, &inputs.1)),
+            |(key, e_supp)| black_box(Syndrome::from_sparse(key, e_supp)),
             BatchSize::SmallInput
         )
     });
@@ -120,10 +140,11 @@ pub fn group_threshold(c: &mut Criterion) {
 
 pub fn group_record(c: &mut Criterion) {
     c.bench_function("record_decoding_failure", |b| {
-        let settings = SettingsBuilder::default().silent(true)
+        let settings = SettingsBuilder::default()
             .number_of_trials(100)
             .trial_settings(TrialSettings::new(KeyFilter::Any, None, Some(NearCodewordClass::N),
                 Some(BLOCK_WEIGHT)).unwrap())
+            .output(OutputTo::Void)
             .build().unwrap();
         let mut rng = custom_thread_rng();
         let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(),
@@ -138,7 +159,8 @@ pub fn group_record(c: &mut Criterion) {
                 drop(tx);
                 rx
             },
-            |rx| rx.iter().for_each(|result| handle_decoding_failure(result, 0, &mut data, &settings)),
+            |rx| rx.iter().for_each(|result|
+                handle_decoding_failure(result, 0, &mut data, &settings)),
             BatchSize::SmallInput
         )
     });
@@ -147,6 +169,7 @@ pub fn group_record(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = group_decoder, group_randgen, group_syndrome, group_threshold, group_record
+    targets = group_application, group_decoder, group_randgen, group_syndrome, group_threshold,
+        group_record
 }
 criterion_main!(benches);

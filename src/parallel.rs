@@ -15,7 +15,7 @@ use rayon::prelude::*;
 pub fn trial_iteration<R: Rng + ?Sized>(
     settings: &TrialSettings,
     tx: &Sender<(DecodingFailure, usize)>,
-    rng: &mut R
+    rng: &mut R,
 ) -> usize {
     let result = application::decoding_failure_trial(settings, rng);
     if let Some(df) = result {
@@ -42,9 +42,9 @@ pub fn trial_loop(
         let new_trials = settings.save_frequency().min(trials_remaining);
         let new_failure_count = pool.install(|| (0..new_trials).into_par_iter().map_with(
             (settings.trial_settings(), tx_results),
-            |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng())
+            |(settings, tx), _| trial_iteration(*settings, tx, &mut custom_thread_rng())
         ).sum());
-        let dfr = DecodingFailureRatio::from(new_failure_count, new_trials)
+        let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
         tx_progress.send(dfr)
             .context("Progress receiver should not be closed")?;
@@ -57,7 +57,7 @@ pub fn record_trial_results(
     settings: &Settings,
     rx_results: Receiver<(DecodingFailure, usize)>,
     rx_progress: Receiver<DecodingFailureRatio>,
-    start_time: Instant
+    start_time: Instant,
 ) -> Result<DataRecord> {
     let seed = get_or_insert_global_seed(settings.seed());
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
@@ -104,18 +104,16 @@ pub fn record_trial_results(
     // trial_loop has now finished and all progress updates have been handled
     data.set_thread_count(global_thread_count());
     data.set_runtime(start_time.elapsed());
-    if !settings.silent() {
-        application::write_json(settings.output_file(), &data)?;
-    }
+    application::write_json(settings.output(), &data)?;
     Ok(data)
 }
 
 pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
-        println!("{}", application::start_message(&settings));
+        println!("{}", application::start_message(settings));
     }
-    application::check_file_writable(settings.output_file(), settings.overwrite())?;
+    application::check_writable(settings.output())?;
     // Set global PRNG seed used for generating data
     try_insert_global_seed(settings.seed())
         .context("Must be able to set global seed to user-specified seed")?;
@@ -126,14 +124,15 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     // Start main trial loop in separate thread
     rayon::spawn(move || {
         let pool = rayon::ThreadPoolBuilder::new().num_threads(settings_clone.threads()).build()
-            .expect("Should be able to construct rayon thread pool");
+            .expect("Rayon thread pool should be initialized");
         trial_loop(&settings_clone, tx_results, tx_progress, pool)
             .expect("tx_progress should not close prematurely");
     });
     // Process messages from trial_loop
-    let data = record_trial_results(&settings, rx_results, rx_progress, start_time)?;
+    let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
     if settings.verbose() >= 1 {
-        println!("{}", application::end_message(data.failure_count(), data.trials(), data.runtime()));
+        println!("{}", application::end_message(data.failure_count(), data.trials(),
+            data.runtime()));
     }
     Ok(data)
 }

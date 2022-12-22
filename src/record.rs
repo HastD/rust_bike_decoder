@@ -19,14 +19,8 @@ pub struct RecordedDecodingFailure {
     thread: usize,
 }
 
-impl From<(DecodingFailure, usize)> for RecordedDecodingFailure {
-    fn from((df, thread_id): (DecodingFailure, usize)) -> Self {
-        Self::from(df, thread_id)
-    }
-}
-
 impl RecordedDecodingFailure {
-    pub fn from(df: DecodingFailure, thread: usize) -> Self {
+    pub fn new(df: DecodingFailure, thread: usize) -> Self {
         let (key, e) = df.take_key_vector();
         let (h0, h1) = key.take_blocks();
         let (e_supp, e_source) = e.take_vector();
@@ -166,14 +160,6 @@ pub struct DecodingFailureRatio {
     trials: usize,
 }
 
-impl TryFrom<(usize, usize)> for DecodingFailureRatio {
-    type Error = InvalidDFRError;
-
-    fn try_from((failure_count, trials): (usize, usize)) -> Result<Self, InvalidDFRError> {
-        Self::from(failure_count, trials)
-    }
-}
-
 impl AddAssign for DecodingFailureRatio {
     fn add_assign(&mut self, other: Self) {
         self.failure_count += other.failure_count;
@@ -183,7 +169,7 @@ impl AddAssign for DecodingFailureRatio {
 
 impl DecodingFailureRatio {
     #[inline]
-    pub fn from(failure_count: usize, trials: usize) -> Result<Self, InvalidDFRError> {
+    pub fn new(failure_count: usize, trials: usize) -> Result<Self, InvalidDFRError> {
         if failure_count <= trials {
             Ok(Self { failure_count, trials })
         } else {

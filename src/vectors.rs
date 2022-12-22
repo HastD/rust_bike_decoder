@@ -24,14 +24,6 @@ pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     [Index; WEIGHT]
 );
 
-impl<const WEIGHT: usize, const LENGTH: usize> TryFrom<[Index; WEIGHT]> for SparseVector<WEIGHT, LENGTH> {
-    type Error = InvalidSupport;
-
-    fn try_from(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
-        Self::from_support(supp)
-    }
-}
-
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {
         let v = Self(supp);
@@ -417,7 +409,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         for _ in 0..TRIALS {
             let v = SparseVector::<ERROR_WEIGHT, BLOCK_LENGTH>::random(&mut rng);
-            v.validate().expect("Random vector should have all entries distinct and in the proper range.");
+            v.validate().expect("Random vector should validate");
         }
     }
 
@@ -438,8 +430,10 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type1(thresh, &mut rng);
-            assert!(v.shifts_above_threshold(thresh), "Type 1 weak block was not actually weak of type 1/2: {:?}", v);
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
+                ::random_weak_type1(thresh, &mut rng);
+            assert!(v.shifts_above_threshold(thresh),
+                "Type 1 weak block was not actually weak of type 1/2: {:?}", v);
         }
     }
 
@@ -448,8 +442,10 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type2(thresh, &mut rng);
-            assert!(v.shifts_above_threshold(thresh), "Type 2 weak block was not actually weak of type 1/2: {:?}", v);
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
+                ::random_weak_type2(thresh, &mut rng);
+            assert!(v.shifts_above_threshold(thresh),
+                "Type 2 weak block was not actually weak of type 1/2: {:?}", v);
         }
     }
 
@@ -458,7 +454,8 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let (v1, v2) = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type3(thresh, &mut rng);
+            let (v1, v2) = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
+                ::random_weak_type3(thresh, &mut rng);
             assert!(v1.max_shifted_product_weight_geq(&v2, thresh),
                 "Pair of type 3 weak blocks was not actually weak of type 3: {:?}", (v1, v2));
         }

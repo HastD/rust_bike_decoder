@@ -1,18 +1,17 @@
 use bike_decoder::{
-    application,
-    decoder,
+    application, decoder,
     keys::{Key, KeyFilter},
     ncw::{ErrorVectorSource, NearCodewordClass},
     parallel,
     parameters::*,
     random::{self, Seed},
-    settings::{SettingsBuilder, Settings, TrialSettings},
+    settings::{OutputTo, Settings, SettingsBuilder, TrialSettings},
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
+use crossbeam_channel::unbounded as channel;
+use rand::{rngs::StdRng, SeedableRng};
 use std::time::Duration;
-use crossbeam_channel::{unbounded as channel};
-use rand::{SeedableRng, rngs::StdRng};
 
 const TRIALS: usize = 10000;
 
@@ -23,11 +22,16 @@ fn decoding_trial_example() {
     let result = application::decoding_trial(&settings, &mut rng);
     let key = Key::from_support(
         [203, 396, 303, 540, 109, 508, 149, 15, 161, 332, 511, 243, 367, 305, 103],
-        [389, 255, 270, 131, 555, 562, 175, 223, 273, 576, 449, 106, 116, 8, 120]
+        [389, 255, 270, 131, 555, 562, 175, 223, 273, 576, 449, 106, 116, 8, 120],
     ).unwrap();
-    let vector = SparseErrorVector::from_support([533,450,441,491,1039,130,180,1086,97,23,1169,67,619,596,759,120,157,958]).unwrap();
+    let vector = SparseErrorVector::from_support(
+        [533, 450, 441, 491, 1039, 130, 180, 1086, 97, 23, 1169, 67, 619, 596, 759, 120, 157, 958]
+    ).unwrap();
     assert_eq!(result.key().clone(), key);
-    assert_eq!(result.vector().clone().take_vector(), (vector, ErrorVectorSource::Random));
+    assert_eq!(
+        result.vector().clone().take_vector(),
+        (vector, ErrorVectorSource::Random)
+    );
     assert!(result.success());
 }
 
@@ -38,13 +42,46 @@ fn decoding_failure_example() {
         [41, 57, 63, 158, 163, 180, 194, 213, 234, 276, 337, 428, 451, 485, 573],
         [55, 84, 127, 185, 194, 218, 260, 374, 382, 394, 404, 509, 528, 537, 580],
     ).unwrap();
-    let e_in = SparseErrorVector::from_support([10,62,157,283,460,503,533,564,715,806,849,858,916,991,996,1004,1078,1096]).unwrap();
+    let e_in = SparseErrorVector::from_support(
+        [10, 62, 157, 283, 460, 503, 533, 564, 715, 806, 849, 858, 916, 991, 996, 1004, 1078, 1096]
+    ).unwrap();
     let mut syn = Syndrome::from_sparse(&key, &e_in);
-    assert_eq!(syn.contents(), [0,0,0,1,0,0,0,1,0,1,0,1,0,0,1,1,1,0,1,0,0,1,0,0,1,0,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1,0,1,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0,0,0,1,0,1,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1,0,1,1,0,0,1,1,0,0,1,0,0,0,0,0,1,1,0,0,0,1,1,0,1,0,0,1,1,0,1,1,0,0,0,0,0,0,1,0,1,1,0,0,0,1,0,0,0,1,1,0,1,0,1,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,1,1,1,0,0,1,0,1,1,0,0,0,1,1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,1,1,0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,1,0,0,0,1,0,0,0,0,1,1,1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,0,1,0,0,1,1,0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,1,0,0,0,0,0,0,1,1,0,1,1,0,1,1,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,1,0,0,0,0,1,0,1,1,0,0,0,1,0,0,0,1,0,1,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1,1,0,0,0,1,0,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,0,1,0]);
+    assert_eq!(
+        syn.contents(),
+        [
+            0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0,
+            0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1,
+            1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1,
+            0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0,
+            0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0,
+            0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1,
+            0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0,
+            1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+            0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0,
+            0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1,
+            0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1,
+            0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0,
+            0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1,
+            1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0,
+            1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
+            0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 0, 1, 0, 1, 0
+        ]
+    );
     let (e_out, success) = decoder::bgf_decoder(&key, &mut syn);
-    println!("syn (after decoding) = {}\nsuccess = {}\ne_out = {:?}", syn, success, e_out.support());
+    assert_ne!(syn.hamming_weight(), 0);
     assert!(!success);
-    assert_eq!(e_out.support(), vec![10,62,157,283,460,503,533,564,644,663,672,777,858,907,940,982,991,996,1004,1078,1104,1116,1126]);
+    assert_eq!(
+        e_out.support(),
+        vec![
+            10, 62, 157, 283, 460, 503, 533, 564, 644, 663, 672, 777, 858, 907, 940, 982, 991, 996,
+            1004, 1078, 1104, 1116, 1126
+        ]
+    );
 }
 
 #[test]
@@ -64,7 +101,13 @@ fn syndrome_e_out_consistent() {
 }
 
 fn guaranteed_failure_settings() -> TrialSettings {
-    TrialSettings::new(KeyFilter::Any, None, Some(NearCodewordClass::N), Some(BLOCK_WEIGHT)).unwrap()
+    TrialSettings::new(
+        KeyFilter::Any,
+        None,
+        Some(NearCodewordClass::N),
+        Some(BLOCK_WEIGHT),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -83,7 +126,8 @@ fn receive_decoding_failure() {
     let (tx, rx) = channel();
     let mut rng = random::custom_thread_rng();
     parallel::trial_iteration(&settings, &tx, &mut rng);
-    let (_result, thread_id) = rx.recv_timeout(Duration::from_secs(1))
+    let (_result, thread_id) = rx
+        .recv_timeout(Duration::from_secs(1))
         .expect("Should receive decoding failure in under 1 second");
     assert_eq!(thread_id, random::current_thread_id())
 }
@@ -91,11 +135,16 @@ fn receive_decoding_failure() {
 #[test]
 fn receive_progress_message() {
     let settings = SettingsBuilder::default()
-        .number_of_trials(10).threads(4)
-        .build().unwrap();
+        .number_of_trials(10)
+        .threads(4)
+        .build()
+        .unwrap();
     let (tx_results, _) = channel();
     let (tx_progress, rx) = channel();
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(settings.threads())
+        .build()
+        .unwrap();
     parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
     let dfr = rx.recv_timeout(Duration::from_secs(1))
         .expect("Should receive progress update in under 1 second");
@@ -105,36 +154,54 @@ fn receive_progress_message() {
 
 #[test]
 fn main_single_threaded_test() {
-    let seed = Seed::try_from("052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf".to_string()).unwrap();
+    let seed = Seed::try_from(
+        "052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf".to_string(),
+    ).unwrap();
     let settings = SettingsBuilder::default()
-        .number_of_trials(100_000).silent(true)
+        .number_of_trials(100_000)
+        .output(OutputTo::Void)
         .threads(1)
         .seed(Some(seed))
         .seed_index(Some(0))
-        .build().unwrap();
+        .build()
+        .unwrap();
     let data = application::run(&settings).unwrap();
     assert!(data.thread_count().is_none());
     assert_eq!(data.seed(), seed);
     assert_eq!(data.failure_count(), 1);
     assert_eq!(data.decoding_failures().len(), 1);
     let df = &data.decoding_failures()[0];
-    assert_eq!(Key::from((df.h0().clone(), df.h1().clone())), Key::from_support(
-        [78,107,113,195,230,231,259,265,354,383,412,430,455,501,583],
-        [8,26,62,150,204,242,265,312,324,386,437,523,535,547,566]
-    ).unwrap());
-    assert_eq!(df.e_supp().clone(), SparseErrorVector::from_support(
-        [138,276,406,447,489,494,523,553,562,622,630,651,692,733,735,783,951,1158]
-    ).unwrap());
+    assert_eq!(
+        Key::new(df.h0().clone(), df.h1().clone()),
+        Key::from_support(
+            [78, 107, 113, 195, 230, 231, 259, 265, 354, 383, 412, 430, 455, 501, 583],
+            [8, 26, 62, 150, 204, 242, 265, 312, 324, 386, 437, 523, 535, 547, 566]
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        df.e_supp().clone(),
+        SparseErrorVector::from_support([
+            138, 276, 406, 447, 489, 494, 523, 553, 562, 622, 630, 651, 692, 733, 735, 783, 951,
+            1158
+        ])
+        .unwrap()
+    );
     assert_eq!(df.e_source(), ErrorVectorSource::Random);
 }
 
 fn multithreaded_example_settings() -> Settings {
-    let seed = Seed::try_from("53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61".to_string()).unwrap();
+    let seed = Seed::try_from(
+        "53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61".to_string(),
+    )
+    .unwrap();
     SettingsBuilder::default()
-        .number_of_trials(200_000).silent(true)
+        .number_of_trials(200_000)
+        .output(OutputTo::Void)
         .threads(4)
         .seed(Some(seed))
-        .build().unwrap()
+        .build()
+        .unwrap()
 }
 
 // This test has to run by itself or the global seeding causes problems
@@ -156,22 +223,39 @@ fn main_multithreaded_test() {
     let df2 = decoding_failures.pop().unwrap();
     let df0 = decoding_failures.pop().unwrap();
     assert_eq!(df0.thread(), 0);
-    assert_eq!(Key::from((df0.h0().clone(), df0.h1().clone())), Key::from_support(
-        [54,102,112,122,165,169,199,400,468,478,496,533,563,571,581],
-        [6,16,36,95,104,181,209,229,259,317,325,363,412,549,576]
-    ).unwrap());
-    assert_eq!(df0.e_supp().clone(), SparseErrorVector::from_support(
-        [55,129,138,196,206,399,407,451,471,486,581,646,791,840,847,1099,1127,1165]
-    ).unwrap());
+    assert_eq!(
+        Key::new(df0.h0().clone(), df0.h1().clone()),
+        Key::from_support(
+            [54, 102, 112, 122, 165, 169, 199, 400, 468, 478, 496, 533, 563, 571, 581],
+            [6, 16, 36, 95, 104, 181, 209, 229, 259, 317, 325, 363, 412, 549, 576]
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        df0.e_supp().clone(),
+        SparseErrorVector::from_support([
+            55, 129, 138, 196, 206, 399, 407, 451, 471, 486, 581, 646, 791, 840, 847, 1099, 1127,
+            1165
+        ])
+        .unwrap()
+    );
     assert_eq!(df0.e_source(), ErrorVectorSource::Random);
     assert_eq!(df2.thread(), 2);
-    assert_eq!(Key::from((df2.h0().clone(), df2.h1().clone())), Key::from_support(
-        [34,87,90,134,264,273,299,338,382,390,465,512,529,547,556],
-        [61,81,193,253,267,341,358,390,394,447,458,510,557,564,579]
-    ).unwrap());
-    assert_eq!(df2.e_supp().clone(), SparseErrorVector::from_support(
-        [12,44,59,101,109,145,150,237,284,289,672,696,741,769,799,986,1117,1124]
-    ).unwrap());
+    assert_eq!(
+        Key::new(df2.h0().clone(), df2.h1().clone()),
+        Key::from_support(
+            [34, 87, 90, 134, 264, 273, 299, 338, 382, 390, 465, 512, 529, 547, 556],
+            [61, 81, 193, 253, 267, 341, 358, 390, 394, 447, 458, 510, 557, 564, 579]
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        df2.e_supp().clone(),
+        SparseErrorVector::from_support([
+            12, 44, 59, 101, 109, 145, 150, 237, 284, 289, 672, 696, 741, 769, 799, 986, 1117, 1124
+        ])
+        .unwrap()
+    );
     assert_eq!(df2.e_source(), ErrorVectorSource::Random);
 }
 
@@ -179,5 +263,7 @@ fn main_multithreaded_test() {
 fn parallel_fail_if_seed_fail() {
     let settings = multithreaded_example_settings();
     random::get_or_insert_global_seed(None);
-    assert!(parallel::run_parallel(&settings).unwrap_err().is::<random::TryInsertGlobalSeedError>());
+    assert!(parallel::run_parallel(&settings)
+        .unwrap_err()
+        .is::<random::TryInsertGlobalSeedError>());
 }

@@ -1,8 +1,8 @@
-use crate::vectors::{Index, SparseVector, InvalidSupport};
 use crate::parameters::*;
+use crate::vectors::{Index, InvalidSupport, SparseVector};
 use rand::Rng;
-use serde::{Serialize, Deserialize};
-use std::{convert::TryFrom, fmt};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use thiserror::Error;
 
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
@@ -13,25 +13,19 @@ pub struct Key {
     h1: CyclicBlock,
 }
 
-impl From<(CyclicBlock, CyclicBlock)> for Key {
-    fn from((h0, h1): (CyclicBlock, CyclicBlock)) -> Self {
+impl Key {
+    #[inline]
+    pub fn new(h0: CyclicBlock, h1: CyclicBlock) -> Self {
         Self { h0, h1 }
     }
-}
 
-impl TryFrom<([Index; BLOCK_WEIGHT], [Index; BLOCK_WEIGHT])> for Key {
-    type Error = InvalidSupport;
-
-    fn try_from((h0_supp, h1_supp): ([Index; BLOCK_WEIGHT], [Index; BLOCK_WEIGHT])) -> Result<Self, Self::Error> {
-        Key::from_support(h0_supp, h1_supp)
-    }
-}
-
-impl Key {
-    pub fn from_support(h0_supp: [Index; BLOCK_WEIGHT], h1_supp: [Index; BLOCK_WEIGHT]) -> Result<Self, InvalidSupport> {
+    pub fn from_support(
+        h0_supp: [Index; BLOCK_WEIGHT],
+        h1_supp: [Index; BLOCK_WEIGHT],
+    ) -> Result<Self, InvalidSupport> {
         Ok(Self {
             h0: CyclicBlock::from_support(h0_supp)?,
-            h1: CyclicBlock::from_support(h1_supp)?
+            h1: CyclicBlock::from_support(h1_supp)?,
         })
     }
 
@@ -97,7 +91,7 @@ impl Key {
                 WeakType::Type1 => self.is_weak_type1(threshold),
                 WeakType::Type2 => self.is_weak_type2(threshold),
                 WeakType::Type3 => self.is_weak_type3(threshold),
-            }
+            },
         }
     }
 
@@ -133,12 +127,13 @@ impl Key {
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
             h0: CyclicBlock::random(rng),
-            h1: CyclicBlock::random(rng)
+            h1: CyclicBlock::random(rng),
         }
     }
 
     pub fn random_non_weak<R>(threshold: usize, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         loop {
             let h0 = CyclicBlock::random_non_weak_type2(threshold, rng);
@@ -150,31 +145,46 @@ impl Key {
     }
 
     pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let random_block = CyclicBlock::random(rng);
         let weak_block = CyclicBlock::random_weak_type1(thresh, rng);
         if rng.gen::<bool>() {
-            Self { h0: weak_block, h1: random_block }
+            Self {
+                h0: weak_block,
+                h1: random_block,
+            }
         } else {
-            Self { h0: random_block, h1: weak_block }
+            Self {
+                h0: random_block,
+                h1: weak_block,
+            }
         }
     }
 
     pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let random_block = CyclicBlock::random(rng);
         let weak_block = CyclicBlock::random_weak_type2(thresh, rng);
         if rng.gen::<bool>() {
-            Self { h0: weak_block, h1: random_block }
+            Self {
+                h0: weak_block,
+                h1: random_block,
+            }
         } else {
-            Self { h0: random_block, h1: weak_block }
+            Self {
+                h0: random_block,
+                h1: weak_block,
+            }
         }
     }
 
     pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let (h0, h1) = CyclicBlock::random_weak_type3(thresh, rng);
         Self { h0, h1 }
@@ -189,17 +199,9 @@ impl fmt::Display for Key {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum WeakType {
-    Type1, Type2, Type3
-}
-
-impl WeakType {
-    pub fn number(&self) -> u8 {
-        match self {
-            Self::Type1 => 1,
-            Self::Type2 => 2,
-            Self::Type3 => 3,
-        }
-    }
+    Type1 = 1,
+    Type2 = 2,
+    Type3 = 3,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -216,10 +218,8 @@ impl Default for KeyFilter {
     }
 }
 
-impl TryFrom<(i8, usize)> for KeyFilter {
-    type Error = KeyFilterError;
-
-    fn try_from((filter, threshold): (i8, usize)) -> Result<Self, KeyFilterError> {
+impl KeyFilter {
+    pub fn new(filter: i8, threshold: usize) -> Result<Self, KeyFilterError> {
         if filter != 0 && threshold < 2 {
             return Err(KeyFilterError::InvalidThreshold);
         } else if threshold >= BLOCK_WEIGHT {
@@ -232,7 +232,7 @@ impl TryFrom<(i8, usize)> for KeyFilter {
             1 => Ok(Self::Weak(WeakType::Type1, threshold)),
             2 => Ok(Self::Weak(WeakType::Type2, threshold)),
             3 => Ok(Self::Weak(WeakType::Type3, threshold)),
-            _ => Err(KeyFilterError::InvalidFilter)
+            _ => Err(KeyFilterError::InvalidFilter),
         }
     }
 }
@@ -256,7 +256,11 @@ mod tests {
         let weak_key_threshold = 3;
         for _ in 0..TRIALS {
             let key = Key::random_non_weak(weak_key_threshold, &mut rng);
-            assert!(!key.is_weak(weak_key_threshold), "Non-weak key was actually weak: {:?}", key);
+            assert!(
+                !key.is_weak(weak_key_threshold),
+                "Non-weak key was actually weak: {:?}",
+                key
+            );
         }
     }
 
@@ -264,9 +268,13 @@ mod tests {
     fn weak_keys_type1() {
         let mut rng = rand::thread_rng();
         let weak_key_threshold = 7;
-        for _ in 0 .. TRIALS {
+        for _ in 0..TRIALS {
             let key = Key::random_weak_type1(weak_key_threshold, &mut rng);
-            assert!(key.is_weak(weak_key_threshold), "Type 1 weak key was not actually weak: {:?}", key);
+            assert!(
+                key.is_weak(weak_key_threshold),
+                "Type 1 weak key was not actually weak: {:?}",
+                key
+            );
         }
     }
 
@@ -274,9 +282,13 @@ mod tests {
     fn weak_keys_type2() {
         let mut rng = rand::thread_rng();
         let weak_key_threshold = 7;
-        for _ in 0 .. TRIALS {
+        for _ in 0..TRIALS {
             let key = Key::random_weak_type2(weak_key_threshold, &mut rng);
-            assert!(key.is_weak(weak_key_threshold), "Type 2 weak key was not actually weak: {:?}", key);
+            assert!(
+                key.is_weak(weak_key_threshold),
+                "Type 2 weak key was not actually weak: {:?}",
+                key
+            );
         }
     }
 
@@ -284,9 +296,13 @@ mod tests {
     fn weak_keys_type3() {
         let mut rng = rand::thread_rng();
         let weak_key_threshold = 7;
-        for _ in 0 .. TRIALS {
+        for _ in 0..TRIALS {
             let key = Key::random_weak_type3(weak_key_threshold, &mut rng);
-            assert!(key.is_weak(weak_key_threshold), "Type 3 weak key was not actually weak: {:?}", key);
+            assert!(
+                key.is_weak(weak_key_threshold),
+                "Type 3 weak key was not actually weak: {:?}",
+                key
+            );
         }
     }
 }
