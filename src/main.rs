@@ -17,17 +17,17 @@ use crate::record::DataRecord;
 use anyhow::Result;
 use clap::Parser;
 
-pub fn run_application(settings: Settings) -> Result<DataRecord> {
+pub fn run_application(settings: &Settings) -> Result<DataRecord> {
     if settings.parallel() {
-        parallel::run_parallel(settings)
+        parallel::run_parallel(&settings)
     } else {
-        application::run(settings)
+        application::run(&settings)
     }
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let settings = Settings::from_args(args)?;
-    run_application(settings)?;
+    run_application(&settings)?;
     Ok(())
 }

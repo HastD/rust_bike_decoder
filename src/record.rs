@@ -6,11 +6,12 @@ use crate::{
     random::Seed,
     vectors::SparseErrorVector,
 };
-use std::{fmt, time::Duration};
+use std::{fmt, ops::AddAssign, time::Duration};
 use serde::{Serialize, Deserialize};
+use thiserror::Error;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct DecodingFailureRecord {
+pub struct RecordedDecodingFailure {
     h0: CyclicBlock,
     h1: CyclicBlock,
     e_supp: SparseErrorVector,
@@ -18,13 +19,13 @@ pub struct DecodingFailureRecord {
     thread: usize,
 }
 
-impl From<(DecodingFailure, usize)> for DecodingFailureRecord {
+impl From<(DecodingFailure, usize)> for RecordedDecodingFailure {
     fn from((df, thread_id): (DecodingFailure, usize)) -> Self {
         Self::from(df, thread_id)
     }
 }
 
-impl DecodingFailureRecord {
+impl RecordedDecodingFailure {
     pub fn from(df: DecodingFailure, thread: usize) -> Self {
         let (key, e) = df.take_key_vector();
         let (h0, h1) = key.take_blocks();
@@ -75,9 +76,8 @@ pub struct DataRecord {
     bf_masked_threshold: u8,
     key_filter: KeyFilter,
     fixed_key: Option<Key>,
-    trials: usize,
-    failure_count: usize,
-    decoding_failures: Vec<DecodingFailureRecord>,
+    #[serde(flatten)] decoding_failure_ratio: DecodingFailureRatio,
+    decoding_failures: Vec<RecordedDecodingFailure>,
     seed: Seed,
     runtime: Duration,
     thread_count: Option<usize>,
@@ -95,8 +95,7 @@ impl DataRecord {
             bf_masked_threshold: BF_MASKED_THRESHOLD,
             key_filter,
             fixed_key,
-            trials: 0,
-            failure_count: 0,
+            decoding_failure_ratio: DecodingFailureRatio::default(),
             decoding_failures: Vec::new(),
             seed,
             runtime: Duration::new(0, 0),
@@ -110,39 +109,28 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn decoding_failures(&self) -> &Vec<DecodingFailureRecord> {
+    pub fn decoding_failures(&self) -> &Vec<RecordedDecodingFailure> {
         &self.decoding_failures
     }
 
     #[inline]
-    pub fn push_decoding_failure(&mut self, df: DecodingFailureRecord) {
+    pub fn push_decoding_failure(&mut self, df: RecordedDecodingFailure) {
         self.decoding_failures.push(df);
     }
 
     #[inline]
     pub fn failure_count(&self) -> usize {
-        self.failure_count
-    }
-
-    #[inline]
-    pub fn add_to_failure_count(&mut self, count: usize) {
-        self.failure_count += count;
+        self.decoding_failure_ratio.failure_count()
     }
 
     #[inline]
     pub fn trials(&self) -> usize {
-        self.trials
+        self.decoding_failure_ratio.trials()
     }
 
     #[inline]
-    pub fn set_trials(&mut self, count: usize) {
-        assert!(count >= self.trials, "Number of trials cannot decrease");
-        self.trials = count;
-    }
-
-    #[inline]
-    pub fn add_to_trials(&mut self, new_trials: usize) {
-        self.trials += new_trials;
+    pub fn add_to_failure_count(&mut self, dfr: DecodingFailureRatio) {
+        self.decoding_failure_ratio += dfr;
     }
 
     #[inline]
@@ -171,3 +159,49 @@ impl fmt::Display for DataRecord {
         write!(f, "{}", serde_json::to_string(self).or(Err(fmt::Error))?)
     }
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct DecodingFailureRatio {
+    failure_count: usize,
+    trials: usize,
+}
+
+impl TryFrom<(usize, usize)> for DecodingFailureRatio {
+    type Error = InvalidDFRError;
+
+    fn try_from((failure_count, trials): (usize, usize)) -> Result<Self, InvalidDFRError> {
+        Self::from(failure_count, trials)
+    }
+}
+
+impl AddAssign for DecodingFailureRatio {
+    fn add_assign(&mut self, other: Self) {
+        self.failure_count += other.failure_count;
+        self.trials += other.trials;
+    }
+}
+
+impl DecodingFailureRatio {
+    #[inline]
+    pub fn from(failure_count: usize, trials: usize) -> Result<Self, InvalidDFRError> {
+        if failure_count <= trials {
+            Ok(Self { failure_count, trials })
+        } else {
+            Err(InvalidDFRError)
+        }
+    }
+
+    #[inline]
+    pub fn failure_count(&self) -> usize {
+        self.failure_count
+    }
+
+    #[inline]
+    pub fn trials(&self) -> usize {
+        self.trials
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+#[error("invalid decoding failure ratio: number of failures must be <= number of trials")]
+pub struct InvalidDFRError;

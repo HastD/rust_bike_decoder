@@ -97,10 +97,10 @@ fn receive_progress_message() {
     let (tx_progress, rx) = channel();
     let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
     parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
-    let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1))
+    let dfr = rx.recv_timeout(Duration::from_secs(1))
         .expect("Should receive progress update in under 1 second");
-    assert_eq!(trials, 10);
-    assert_eq!(failure_count, 0);
+    assert_eq!(dfr.trials(), 10);
+    assert_eq!(dfr.failure_count(), 0);
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn main_single_threaded_test() {
         .seed(Some(seed))
         .seed_index(Some(0))
         .build().unwrap();
-    let data = application::run(settings).unwrap();
+    let data = application::run(&settings).unwrap();
     assert!(data.thread_count().is_none());
     assert_eq!(data.seed(), seed);
     assert_eq!(data.failure_count(), 1);
@@ -143,12 +143,13 @@ fn multithreaded_example_settings() -> Settings {
 fn main_multithreaded_test() {
     let settings = multithreaded_example_settings();
     let seed = settings.seed().unwrap();
-    let data = parallel::run_parallel(settings).unwrap();
+    let data = parallel::run_parallel(&settings).unwrap();
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed(), seed);
     assert_eq!(data.failure_count(), data.decoding_failures().len());
     assert_eq!(data.thread_count(), Some(4));
     assert_eq!(data.failure_count(), 2, "failure_count() didn't match");
+    assert_eq!(data.trials(), settings.number_of_trials());
     let mut decoding_failures = data.decoding_failures().clone();
     assert_eq!(data.decoding_failures().len(), 2, "decoding_failures().len() didn't match");
     decoding_failures.sort_by_key(|df| df.thread());
@@ -178,5 +179,5 @@ fn main_multithreaded_test() {
 fn parallel_fail_if_seed_fail() {
     let settings = multithreaded_example_settings();
     random::get_or_insert_global_seed(None);
-    assert!(parallel::run_parallel(settings).unwrap_err().is::<random::TryInsertGlobalSeedError>());
+    assert!(parallel::run_parallel(&settings).unwrap_err().is::<random::TryInsertGlobalSeedError>());
 }

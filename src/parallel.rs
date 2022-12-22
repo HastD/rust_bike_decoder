@@ -3,7 +3,7 @@ use crate::{
     decoder::DecodingFailure,
     random::{get_or_insert_global_seed, try_insert_global_seed, current_thread_id,
         custom_thread_rng, global_thread_count},
-    record::DataRecord,
+    record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
 use std::time::{Duration, Instant};
@@ -33,7 +33,7 @@ pub fn trial_iteration<R: Rng + ?Sized>(
 pub fn trial_loop(
     settings: &Settings,
     tx_results: Sender<(DecodingFailure, usize)>,
-    tx_progress: Sender<(usize, usize)>,
+    tx_progress: Sender<DecodingFailureRatio>,
     pool: rayon::ThreadPool,
 ) -> Result<()> {
     let mut trials_remaining = settings.number_of_trials();
@@ -44,7 +44,9 @@ pub fn trial_loop(
             (settings.trial_settings(), tx_results),
             |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng())
         ).sum());
-        tx_progress.send((new_failure_count, new_trials))
+        let dfr = DecodingFailureRatio::from(new_failure_count, new_trials)
+            .expect("Number of decoding failures should be <= number of trials");
+        tx_progress.send(dfr)
             .context("Progress receiver should not be closed")?;
         trials_remaining -= new_trials;
     }
@@ -54,7 +56,7 @@ pub fn trial_loop(
 pub fn record_trial_results(
     settings: &Settings,
     rx_results: Receiver<(DecodingFailure, usize)>,
-    rx_progress: Receiver<(usize, usize)>,
+    rx_progress: Receiver<DecodingFailureRatio>,
     start_time: Instant
 ) -> Result<DataRecord> {
     let seed = get_or_insert_global_seed(settings.seed());
@@ -83,9 +85,8 @@ pub fn record_trial_results(
         // Handle all progress updates currently in channel, then continue (w/ timeout delay)
         while rx_progress_open {
             match rx_progress.recv_timeout(Duration::from_millis(100)) {
-                Ok((new_fc, new_trials)) =>
-                    application::handle_progress(new_fc, new_trials, &mut data,
-                        settings, start_time.elapsed())?,
+                Ok(dfr) =>
+                    application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?,
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
                     // progress channel closed, flag this loop to be skipped
@@ -97,9 +98,8 @@ pub fn record_trial_results(
     // Drops the results receiver so no more decoding failures are handled
     drop(rx_results);
     // Receive and handle all remaining progress updates
-    for (new_fc, new_trials) in rx_progress {
-        application::handle_progress(new_fc, new_trials, &mut data,
-            settings, start_time.elapsed())?;
+    for dfr in rx_progress {
+        application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
     }
     // trial_loop has now finished and all progress updates have been handled
     data.set_thread_count(global_thread_count());
@@ -110,7 +110,7 @@ pub fn record_trial_results(
     Ok(data)
 }
 
-pub fn run_parallel(settings: Settings) -> Result<DataRecord> {
+pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", application::start_message(&settings));

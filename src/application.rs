@@ -4,7 +4,7 @@ use crate::{
     ncw::TaggedErrorVector,
     parameters::*,
     random::{Seed, current_thread_id, get_rng_from_seed, global_thread_count},
-    record::DataRecord,
+    record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
 use std::{
@@ -131,14 +131,13 @@ pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
     }
 }
 
-pub fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut DataRecord,
+pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
         settings: &Settings, runtime: Duration) -> Result<()> {
-    data.add_to_failure_count(new_failure_count);
-    data.add_to_trials(new_trials);
+    data.add_to_failure_count(dfr);
+    data.set_runtime(runtime);
     if settings.parallel() {
         data.set_thread_count(global_thread_count());
     }
-    data.set_runtime(runtime);
     if !settings.silent() && (settings.output_file().is_some() || settings.verbose() >= 2) {
         write_json(settings.output_file(), &data)?;
     }    
@@ -149,7 +148,7 @@ pub fn handle_progress(new_failure_count: usize, new_trials: usize, data: &mut D
     Ok(())
 }
 
-pub fn run(settings: Settings) -> Result<DataRecord> {
+pub fn run(settings: &Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         println!("{}", start_message(&settings));
@@ -172,7 +171,9 @@ pub fn run(settings: Settings) -> Result<DataRecord> {
                 handle_decoding_failure(df, seed_index, &mut data, &settings);
             }
         }
-        handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time.elapsed())?;
+        let dfr = DecodingFailureRatio::from(new_failure_count, new_trials)
+            .expect("Number of decoding failures should be <= number of trials");
+        handle_progress(dfr, &mut data, &settings, start_time.elapsed())?;
         trials_remaining -= new_trials;
     }
     // Write final data
