@@ -57,8 +57,8 @@ pub fn record_trial_results(
     rx_progress: Receiver<(usize, usize)>,
     start_time: Instant
 ) -> Result<DataRecord> {
-    let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    data.set_seed(get_or_insert_global_seed(settings.seed()));
+    let seed = get_or_insert_global_seed(settings.seed());
+    let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     let mut rx_results_open = true;
     let mut rx_progress_open = true;
     // Alternate between handling decoding failures and handling progress updates

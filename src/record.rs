@@ -78,13 +78,13 @@ pub struct DataRecord {
     trials: usize,
     failure_count: usize,
     decoding_failures: Vec<DecodingFailureRecord>,
-    seed: Option<Seed>,
+    seed: Seed,
     runtime: Duration,
     thread_count: Option<usize>,
 }
 
 impl DataRecord {
-    pub fn new(key_filter: KeyFilter, fixed_key: Option<Key>) -> Self {
+    pub fn new(key_filter: KeyFilter, fixed_key: Option<Key>, seed: Seed) -> Self {
         Self {
             r: BLOCK_LENGTH,
             d: BLOCK_WEIGHT,
@@ -98,21 +98,15 @@ impl DataRecord {
             trials: 0,
             failure_count: 0,
             decoding_failures: Vec::new(),
-            seed: None,
+            seed,
             runtime: Duration::new(0, 0),
             thread_count: None,
         }
     }
 
     #[inline]
-    pub fn seed(&self) -> Option<Seed> {
+    pub fn seed(&self) -> Seed {
         self.seed
-    }
-
-    #[inline]
-    pub fn set_seed(&mut self, seed: Seed) {
-        assert!(self.seed.is_none(), "Can't set seed twice");
-        self.seed = Some(seed);
     }
 
     #[inline]

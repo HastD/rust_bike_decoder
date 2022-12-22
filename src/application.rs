@@ -155,11 +155,10 @@ pub fn run(settings: Settings) -> Result<DataRecord> {
         println!("{}", start_message(&settings));
     }
     check_file_writable(settings.output_file(), settings.overwrite())?;
-    // Initialize object storing data to be recorded
-    let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
-    let seed = settings.seed().unwrap_or_else(Seed::from_entropy);
     // Set PRNG seed used for generating data
-    data.set_seed(seed);
+    let seed = settings.seed().unwrap_or_else(Seed::from_entropy);
+    // Initialize object storing data to be recorded
+    let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     let seed_index = settings.seed_index().unwrap_or_else(current_thread_id);
     let mut rng = get_rng_from_seed(seed, seed_index);
     let mut trials_remaining = settings.number_of_trials();

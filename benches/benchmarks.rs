@@ -4,7 +4,7 @@ use bike_decoder::{
     keys::{Key, KeyFilter},
     ncw::{TaggedErrorVector, NearCodewordClass},
     parameters::*,
-    random::custom_thread_rng,
+    random::{custom_thread_rng, global_seed},
     record::DataRecord,
     settings::{SettingsBuilder, TrialSettings},
     syndrome::Syndrome,
@@ -125,8 +125,9 @@ pub fn group_record(c: &mut Criterion) {
             .trial_settings(TrialSettings::new(KeyFilter::Any, None, Some(NearCodewordClass::N),
                 Some(BLOCK_WEIGHT)).unwrap())
             .build().unwrap();
-        let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned());
         let mut rng = custom_thread_rng();
+        let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(),
+            global_seed().unwrap());
         b.iter_batched(
             || {
                 let (tx, rx) = channel();
