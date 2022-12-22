@@ -83,8 +83,8 @@ fn receive_decoding_failure() {
     let (tx, rx) = channel();
     let mut rng = random::custom_thread_rng();
     parallel::trial_iteration(&settings, &tx, &mut rng);
-    let (result, thread_id) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
-    assert!(!result.success());
+    let (_result, thread_id) = rx.recv_timeout(Duration::from_secs(1))
+        .expect("Should receive decoding failure in under 1 second");
     assert_eq!(thread_id, random::current_thread_id())
 }
 
@@ -97,7 +97,8 @@ fn receive_progress_message() {
     let (tx_progress, rx) = channel();
     let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.threads()).build().unwrap();
     parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
-    let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    let (failure_count, trials) = rx.recv_timeout(Duration::from_secs(1))
+        .expect("Should receive progress update in under 1 second");
     assert_eq!(trials, 10);
     assert_eq!(failure_count, 0);
 }

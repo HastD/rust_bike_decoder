@@ -1,8 +1,9 @@
 use crate::{
     application,
+    decoder::DecodingFailure,
     random::{get_or_insert_global_seed, try_insert_global_seed, current_thread_id,
         custom_thread_rng, global_thread_count},
-    record::{DecodingResult, DataRecord},
+    record::DataRecord,
     settings::{Settings, TrialSettings},
 };
 use std::time::{Duration, Instant};
@@ -13,17 +14,17 @@ use rayon::prelude::*;
 
 pub fn trial_iteration<R: Rng + ?Sized>(
     settings: &TrialSettings,
-    tx: &Sender<(DecodingResult, usize)>,
+    tx: &Sender<(DecodingFailure, usize)>,
     rng: &mut R
 ) -> usize {
-    let result = application::decoding_trial(settings, rng);
-    if result.success() {
-        0
-    } else {
+    let result = application::decoding_failure_trial(settings, rng);
+    if let Some(df) = result {
         // Attempt to send decoding failure, but ignore errors, as the receiver may
         // choose to hang up after receiving the maximum number of decoding failures.
-        tx.send((result, current_thread_id())).ok();
+        tx.send((df, current_thread_id())).ok();
         1
+    } else {
+        0
     }
 }
 
@@ -31,7 +32,7 @@ pub fn trial_iteration<R: Rng + ?Sized>(
 // progress updates (counts of decoding failures and trials run) via tx_progress.
 pub fn trial_loop(
     settings: &Settings,
-    tx_results: Sender<(DecodingResult, usize)>,
+    tx_results: Sender<(DecodingFailure, usize)>,
     tx_progress: Sender<(usize, usize)>,
     pool: rayon::ThreadPool,
 ) -> Result<()> {
@@ -52,7 +53,7 @@ pub fn trial_loop(
 
 pub fn record_trial_results(
     settings: &Settings,
-    rx_results: Receiver<(DecodingResult, usize)>,
+    rx_results: Receiver<(DecodingFailure, usize)>,
     rx_progress: Receiver<(usize, usize)>,
     start_time: Instant
 ) -> Result<DataRecord> {
@@ -65,8 +66,8 @@ pub fn record_trial_results(
         // Handle all decoding failures currently in channel, then continue
         while rx_results_open {
             match rx_results.try_recv() {
-                Ok((result, thread)) => {
-                    application::handle_decoding_failure(result, thread, &mut data, settings);
+                Ok((df, thread)) => {
+                    application::handle_decoding_failure(df, thread, &mut data, settings);
                     if data.decoding_failures().len() == settings.record_max() {
                         // Max number of decoding failures recorded, short-circuit outer loop
                         break 'outer;

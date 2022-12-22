@@ -1,8 +1,91 @@
-use crate::parameters::*;
-use crate::keys::Key;
-use crate::vectors::ErrorVector;
-use crate::syndrome::Syndrome;
-use crate::threshold::THRESHOLD_CACHE;
+use crate::{
+    keys::Key,
+    ncw::TaggedErrorVector,
+    parameters::*,
+    syndrome::Syndrome,
+    threshold::THRESHOLD_CACHE,
+    vectors::ErrorVector,
+};
+use thiserror::Error;
+
+#[derive(Clone, Debug)]
+pub struct DecodingResult {
+    key: Key,
+    vector: TaggedErrorVector,
+    success: bool,
+}
+
+impl DecodingResult {
+    pub fn from(key: Key, vector: TaggedErrorVector) -> Self {
+        let e_supp = vector.vector();
+        let e_in = e_supp.dense();
+        let mut syn = Syndrome::from_sparse(&key, vector.vector());
+        let (e_out, same_syndrome) = bgf_decoder(&key, &mut syn);
+        let success = e_in == e_out;
+        assert!(same_syndrome || !success);
+        Self { key, vector, success }
+    }
+
+    #[inline]
+    pub fn key(&self) -> &Key {
+        &self.key
+    }
+
+    #[inline]
+    pub fn vector(&self) -> &TaggedErrorVector {
+        &self.vector
+    }
+
+    #[inline]
+    pub fn success(&self) -> bool {
+        self.success
+    }
+
+    #[inline]
+    pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
+        (self.key, self.vector)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DecodingFailure {
+    key: Key,
+    vector: TaggedErrorVector,
+}
+
+impl TryFrom<DecodingResult> for DecodingFailure {
+    type Error = NotFailureError;
+
+    fn try_from(result: DecodingResult) -> Result<Self, NotFailureError> {
+        if !result.success() {
+            let (key, vector) = result.take_key_vector();
+            Ok(Self { key, vector })
+        } else {
+            Err(NotFailureError)
+        }
+    }
+}
+
+impl DecodingFailure {
+    #[inline]
+    pub fn key(&self) -> &Key {
+        &self.key
+    }
+
+    #[inline]
+    pub fn vector(&self) -> &TaggedErrorVector {
+        &self.vector
+    }
+
+    #[inline]
+    pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
+        (self.key, self.vector)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+#[error("not a decoding failure, so can't convert to DecodingFailure")]
+pub struct NotFailureError;
 
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     let mut e_out = ErrorVector::zero();

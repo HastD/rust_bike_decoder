@@ -1,5 +1,5 @@
 use bike_decoder::{
-    application::{decoding_trial, handle_decoding_failure},
+    application::{decoding_failure_trial, handle_decoding_failure},
     decoder::{bgf_decoder, unsatisfied_parity_checks},
     keys::{Key, KeyFilter},
     ncw::{TaggedErrorVector, NearCodewordClass},
@@ -20,7 +20,7 @@ pub fn group_decoder(c: &mut Criterion) {
     c.bench_function("decoding_trial", |b| {
         let settings = TrialSettings::default();
         let mut rng = custom_thread_rng();
-        b.iter(|| black_box(decoding_trial(&settings, &mut rng)))
+        b.iter(|| black_box(decoding_failure_trial(&settings, &mut rng)))
     });
 
     c.bench_function("bgf_decoder", |b| {
@@ -131,7 +131,8 @@ pub fn group_record(c: &mut Criterion) {
             || {
                 let (tx, rx) = channel();
                 for _ in 0..10 {
-                    tx.send(decoding_trial(&settings.trial_settings(), &mut rng)).ok();
+                    let df = decoding_failure_trial(&settings.trial_settings(), &mut rng).unwrap();
+                    tx.send(df).ok();
                 }
                 drop(tx);
                 rx

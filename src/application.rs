@@ -1,12 +1,11 @@
 use crate::{
-    decoder::bgf_decoder,
+    decoder::{DecodingResult, DecodingFailure},
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
     random::{Seed, current_thread_id, get_rng_from_seed, global_thread_count},
-    record::{DecodingResult, DecodingFailureRecord, DataRecord},
+    record::DataRecord,
     settings::{Settings, TrialSettings},
-    syndrome::Syndrome,
 };
 use std::{
     convert::AsRef,
@@ -32,13 +31,14 @@ pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R) -> DecodingResul
     } else {
         TaggedErrorVector::random(rng)
     };
-    let e_supp = tagged_error_vector.vector();
-    let e_in = e_supp.dense();
-    let mut syn = Syndrome::from_sparse(&key, tagged_error_vector.vector());
-    let (e_out, same_syndrome) = bgf_decoder(&key, &mut syn);
-    let success = e_in == e_out;
-    assert!(same_syndrome || !success);
-    DecodingResult::from(key, tagged_error_vector, success)
+    DecodingResult::from(key, tagged_error_vector)
+}
+
+pub fn decoding_failure_trial<R>(settings: &TrialSettings, rng: &mut R) -> Option<DecodingFailure>
+    where R: Rng + ?Sized
+{
+    let result = decoding_trial(settings, rng);
+    DecodingFailure::try_from(result).ok()
 }
 
 pub fn check_file_writable(output: Option<&Path>, overwrite: bool) -> Result<()> {
@@ -117,18 +117,17 @@ pub fn end_message(failure_count: usize, number_of_trials: usize, runtime: Durat
         number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
 }
 
-pub fn handle_decoding_failure(result: DecodingResult, thread_id: usize,
+pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
         data: &mut DataRecord, settings: &Settings) {
-    assert!(!result.success(), "handle_decoding_failure should only be called for decoding failures");
     if data.decoding_failures().len() < settings.record_max() {
         if settings.verbose() >= 3 {
             println!("Decoding failure found!");
-            println!("Key: {}\nError vector: {}", result.key(), result.vector());
+            println!("Key: {}\nError vector: {}", df.key(), df.vector());
             if data.decoding_failures().len() + 1 == settings.record_max() {
                 println!("Maximum number of decoding failures recorded.");
             }    
         }
-        data.push_decoding_failure(DecodingFailureRecord::from(result, thread_id));
+        data.push_decoding_failure((df, thread_id).into());
     }
 }
 
@@ -168,10 +167,10 @@ pub fn run(settings: Settings) -> Result<DataRecord> {
         let mut new_failure_count = 0;
         let new_trials = settings.save_frequency().min(trials_remaining);
         for _ in 0..new_trials {
-            let result = decoding_trial(settings.trial_settings(), &mut rng);
-            if !result.success() {
+            let result = decoding_failure_trial(settings.trial_settings(), &mut rng);
+            if let Some(df) = result {
                 new_failure_count += 1;
-                handle_decoding_failure(result, seed_index, &mut data, &settings);
+                handle_decoding_failure(df, seed_index, &mut data, &settings);
             }
         }
         handle_progress(new_failure_count, new_trials, &mut data, &settings, start_time.elapsed())?;

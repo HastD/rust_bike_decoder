@@ -1,46 +1,13 @@
 use crate::{
+    decoder::DecodingFailure,
     keys::{CyclicBlock, Key, KeyFilter},
-    ncw::{ErrorVectorSource, TaggedErrorVector},
+    ncw::ErrorVectorSource,
     parameters::*,
     random::Seed,
     vectors::SparseErrorVector,
 };
 use std::{fmt, time::Duration};
 use serde::{Serialize, Deserialize};
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct DecodingResult {
-    key: Key,
-    vector: TaggedErrorVector,
-    success: bool
-}
-
-impl DecodingResult {
-    #[inline]
-    pub fn from(key: Key, vector: TaggedErrorVector, success: bool) -> Self {
-        Self { key, vector, success }
-    }
-
-    #[inline]
-    pub fn key(&self) -> &Key {
-        &self.key
-    }
-
-    #[inline]
-    pub fn vector(&self) -> &TaggedErrorVector {
-        &self.vector
-    }
-
-    #[inline]
-    pub fn success(&self) -> bool {
-        self.success
-    }
-
-    #[inline]
-    pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
-        (self.key, self.vector)
-    }
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DecodingFailureRecord {
@@ -51,9 +18,15 @@ pub struct DecodingFailureRecord {
     thread: usize,
 }
 
+impl From<(DecodingFailure, usize)> for DecodingFailureRecord {
+    fn from((df, thread_id): (DecodingFailure, usize)) -> Self {
+        Self::from(df, thread_id)
+    }
+}
+
 impl DecodingFailureRecord {
-    pub fn from(result: DecodingResult, thread: usize) -> Self {
-        let (key, e) = result.take_key_vector();
+    pub fn from(df: DecodingFailure, thread: usize) -> Self {
+        let (key, e) = df.take_key_vector();
         let (h0, h1) = key.take_blocks();
         let (e_supp, e_source) = e.take_vector();
         Self {
