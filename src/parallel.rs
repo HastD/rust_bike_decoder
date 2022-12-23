@@ -16,7 +16,7 @@ pub fn trial_iteration<R: Rng + ?Sized>(
     settings: &TrialSettings,
     tx: &Sender<(DecodingFailure, usize)>,
     rng: &mut R,
-) -> usize {
+) -> u64 {
     let result = application::decoding_failure_trial(settings, rng);
     if let Some(df) = result {
         // Attempt to send decoding failure, but ignore errors, as the receiver may
@@ -36,7 +36,7 @@ pub fn trial_loop(
     tx_progress: Sender<DecodingFailureRatio>,
     pool: rayon::ThreadPool,
 ) -> Result<()> {
-    let mut trials_remaining = settings.number_of_trials();
+    let mut trials_remaining = settings.num_trials();
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
         let new_trials = settings.save_frequency().min(trials_remaining);
@@ -131,7 +131,7 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
     if settings.verbose() >= 1 {
-        println!("{}", application::end_message(data.failure_count(), data.trials(),
+        println!("{}", application::end_message(data.decoding_failure_ratio(),
             data.runtime()));
     }
     Ok(data)

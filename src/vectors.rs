@@ -297,51 +297,57 @@ impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
 
 // Dense vectors of fixed length over GF(2)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DenseVector<const LENGTH: usize>([u8; LENGTH]);
+pub struct DenseVector<const LENGTH: usize>([bool; LENGTH]);
+
+impl<const LENGTH: usize> Default for DenseVector<LENGTH> {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
 
 impl<const LENGTH: usize> DenseVector<LENGTH> {
     pub fn zero() -> Self {
-        Self([0u8; LENGTH])
+        Self([false; LENGTH])
     }
 
-    pub fn from(list: [u8; LENGTH]) -> Self {
+    pub fn new(list: [bool; LENGTH]) -> Self {
         Self(list)
     }
 
     #[inline]
-    pub fn get(&self, i: usize) -> u8 {
+    pub fn get(&self, i: usize) -> bool {
         self.0[i]
     }
 
     #[inline]
-    pub fn contents(&self) -> &[u8] {
+    pub fn contents(&self) -> &[bool] {
         &self.0
     }
 
     #[inline]
     pub fn flip(&mut self, i: usize) {
-        self.0[i] ^= 1;
+        self.0[i] ^= true;
     }
 
     #[inline]
     pub fn set_zero(&mut self, i: usize) {
-        self.0[i] = 0;
+        self.0[i] = false;
     }
 
     #[inline]
     pub fn set_one(&mut self, i: usize) {
-        self.0[i] = 1;
+        self.0[i] = true;
     }
 
     #[inline]
     pub fn set_all_zero(&mut self) {
-        self.0.iter_mut().for_each(|entry| *entry = 0);
+        self.0.iter_mut().for_each(|entry| *entry = false);
     }
 
     pub fn support(&self) -> Vec<Index> {
         let mut supp: Vec<Index> = Vec::new();
         for i in 0..LENGTH {
-            if self.0[i] == 1 {
+            if self.0[i] {
                 supp.push(i as Index);
             }
         }

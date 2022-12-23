@@ -100,13 +100,12 @@ pub fn start_message(settings: &Settings) -> String {
         String::new()
     };
     format!("Starting decoding trials (N = {}) with parameters:\n{}{}{}{}",
-        settings.number_of_trials(), parameter_message, weak_key_message, ncw_message,
+        settings.num_trials(), parameter_message, weak_key_message, ncw_message,
         thread_message)
 }
 
-pub fn end_message(failure_count: usize, number_of_trials: usize, runtime: Duration) -> String {
-    let dfr = failure_count as f64 / number_of_trials as f64;
-    let avg_nanos = runtime.as_nanos() / number_of_trials as u128;
+pub fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> String {
+    let avg_nanos = runtime.as_nanos() / dfr.num_trials() as u128;
     let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
     let avg_text = if avg_mcs >= 100 {
         format!("{} μs", avg_mcs)
@@ -122,7 +121,8 @@ pub fn end_message(failure_count: usize, number_of_trials: usize, runtime: Durat
         log2(DFR): {:.2}\n\
         Runtime: {:.3} s\n\
         Average: {}",
-        number_of_trials, failure_count, dfr.log2(), runtime.as_secs_f64(), avg_text)
+        dfr.num_trials(), dfr.num_failures(), dfr.as_f64().log2(),
+        runtime.as_secs_f64(), avg_text)
 }
 
 pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
@@ -141,7 +141,7 @@ pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
 
 pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
         settings: &Settings, runtime: Duration) -> Result<()> {
-    data.add_to_failure_count(dfr);
+    data.add_results(dfr);
     data.set_runtime(runtime);
     if settings.parallel() {
         data.set_thread_count(global_thread_count());
@@ -151,7 +151,7 @@ pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
     }    
     if settings.verbose() >= 2 {
         println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
-            data.failure_count(), data.trials(), runtime.as_secs_f64());
+            data.num_failures(), data.num_trials(), runtime.as_secs_f64());
     }
     Ok(())
 }
@@ -168,7 +168,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     let seed_index = settings.seed_index().unwrap_or_else(current_thread_id);
     let mut rng = get_rng_from_seed(seed, seed_index);
-    let mut trials_remaining = settings.number_of_trials();
+    let mut trials_remaining = settings.num_trials();
     while trials_remaining > 0 {
         let mut new_failure_count = 0;
         let new_trials = settings.save_frequency().min(trials_remaining);
@@ -188,7 +188,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
     data.set_runtime(start_time.elapsed());
     write_json(settings.output(), &data)?;
     if settings.verbose() >= 1 {
-        println!("{}", end_message(data.failure_count(), data.trials(), data.runtime()));
+        println!("{}", end_message(data.decoding_failure_ratio(), data.runtime()));
     }
     Ok(data)
 }

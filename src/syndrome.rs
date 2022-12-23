@@ -6,67 +6,67 @@ use std::{fmt, ops::Add};
 // Note: syndromes are padded out to 2*SIZE_AVX so they can be passed to
 // code in decoder.rs that uses AVX2 instructions.
 // However, only bits up to BLOCK_LENGTH are ever used outside of that.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Syndrome(DenseVector<DOUBLE_SIZE_AVX>);
 
 impl Syndrome {
     pub fn zero() -> Self {
-        Self(DenseVector::from([0u8; DOUBLE_SIZE_AVX]))
+        Self::default()
     }
 
-    pub fn from(list: [u8; BLOCK_LENGTH]) -> Self {
-        let mut v = [0; DOUBLE_SIZE_AVX];
+    pub fn new(list: [bool; BLOCK_LENGTH]) -> Self {
+        let mut v = [false; DOUBLE_SIZE_AVX];
         v[..BLOCK_LENGTH].copy_from_slice(&list);
-        Self(DenseVector::from(v))
+        Self(DenseVector::new(v))
     }
 
     pub fn from_sparse(key: &Key, err: &SparseErrorVector) -> Self {
-        let mut s = [0u8; BLOCK_LENGTH];
+        let mut s = [false; BLOCK_LENGTH];
         for &i in err.support() {
             if i < BLOCK_LENGTH as u32 {
                 for &j in key.h0().support() {
-                    s[(i + j) as usize % BLOCK_LENGTH] ^= 1;
+                    s[(i + j) as usize % BLOCK_LENGTH] ^= true;
                 }
             } else {
                 for &j in key.h1().support() {
-                    s[(i + j) as usize % BLOCK_LENGTH] ^= 1;
+                    s[(i + j) as usize % BLOCK_LENGTH] ^= true;
                 }
             }
         }
-        Self::from(s)
+        Self::new(s)
     }
 
     pub fn from_dense(key: &Key, err: &ErrorVector) -> Self {
-        let mut s = [0u8; BLOCK_LENGTH];
+        let mut s = [false; BLOCK_LENGTH];
         for i in 0..BLOCK_LENGTH {
-            if err.get(i) == 1 {
+            if err.get(i) {
                 for &j in key.h0().support() {
-                    s[(i + j as usize) % BLOCK_LENGTH] ^= 1;
+                    s[(i + j as usize) % BLOCK_LENGTH] ^= true;
                 }
             }
         }
         for i in 0..BLOCK_LENGTH {
-            if err.get(BLOCK_LENGTH + i) == 1 {
+            if err.get(BLOCK_LENGTH + i) {
                 for &j in key.h1().support() {
-                    s[(i + j as usize) % BLOCK_LENGTH] ^= 1;
+                    s[(i + j as usize) % BLOCK_LENGTH] ^= true;
                 }
             }
         }
-        Self::from(s)
+        Self::new(s)
     }
 
     #[inline]
-    pub fn get(&self, i: usize) -> u8 {
+    pub fn get(&self, i: usize) -> bool {
         self.0.get(i)
     }
 
     #[inline]
-    pub fn contents(&self) -> &[u8] {
+    pub fn contents(&self) -> &[bool] {
         &self.0.contents()[..BLOCK_LENGTH]
     }
 
     #[inline]
-    pub fn contents_with_buffer(&self) -> &[u8] {
+    pub fn contents_with_buffer(&self) -> &[bool] {
         self.0.contents()
     }
 
@@ -93,7 +93,7 @@ impl Syndrome {
     pub fn hamming_weight(&self) -> usize {
         let mut wt = 0;
         for i in 0..BLOCK_LENGTH {
-            if self.get(i) == 1 {
+            if self.get(i) {
                 wt += 1;
             }
         }
@@ -135,11 +135,9 @@ impl Eq for Syndrome { }
 
 impl fmt::Display for Syndrome {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut str_vec = Vec::new();
-        for bit in self.contents().iter() {
-            str_vec.push(bit.to_string());
-        }
-        write!(f, "[{}]", str_vec.join(", "))
+        let str_bits: Vec<&str> = self.contents().iter()
+            .map(|bit| if *bit { "1" } else { "0" }).collect();
+        write!(f, "[{}]", str_bits.join(", "))
     }
 }
 

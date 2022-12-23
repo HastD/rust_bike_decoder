@@ -20,7 +20,7 @@ use crossbeam_channel::{unbounded as channel};
 pub fn group_application(c: &mut Criterion) {
     c.bench_function("run_application", |b| {
         let settings = SettingsBuilder::default()
-            .number_of_trials(10_000)
+            .num_trials(10_000)
             .output(OutputTo::Void)
             .build().unwrap();
         b.iter(|| black_box(application::run(&settings)))
@@ -28,7 +28,7 @@ pub fn group_application(c: &mut Criterion) {
 
     c.bench_function("run_parallel", |b| {
         let settings = SettingsBuilder::default()
-            .number_of_trials(10_000)
+            .num_trials(10_000)
             .threads(0)
             .output(OutputTo::Void)
             .build().unwrap();
@@ -141,7 +141,7 @@ pub fn group_threshold(c: &mut Criterion) {
 pub fn group_record(c: &mut Criterion) {
     c.bench_function("record_decoding_failure", |b| {
         let settings = SettingsBuilder::default()
-            .number_of_trials(100)
+            .num_trials(100)
             .trial_settings(TrialSettings::new(KeyFilter::Any, None, Some(NearCodewordClass::N),
                 Some(BLOCK_WEIGHT)).unwrap())
             .output(OutputTo::Void)

@@ -3,7 +3,7 @@ use crate::{
     ncw::NearCodewordClass,
     random::Seed,
 };
-use std::{num::NonZeroUsize, path::PathBuf};
+use std::{num::NonZeroU64, path::PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use derive_builder::Builder;
@@ -50,9 +50,9 @@ pub struct Args {
 
 #[derive(Builder, Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
-    number_of_trials: usize,
+    num_trials: u64,
     #[builder(default)] trial_settings: TrialSettings,
-    #[builder(default)] save_frequency: Option<NonZeroUsize>,
+    #[builder(default)] save_frequency: Option<NonZeroU64>,
     #[builder(default="10000")] record_max: usize,
     #[builder(default)] verbose: u8,
     #[builder(default)] seed: Option<Seed>,
@@ -62,12 +62,12 @@ pub struct Settings {
 }
 
 impl Settings {
-    const MIN_SAVE_FREQUENCY: usize = 10000;
+    const MIN_SAVE_FREQUENCY: u64 = 10000;
     const MAX_THREAD_COUNT: usize = 1024;
 
     pub fn from_args(args: Args) -> Result<Self> {
         let settings = Self {
-            number_of_trials: args.number as usize,
+            num_trials: args.number as u64,
             trial_settings: TrialSettings::new(
                 KeyFilter::new(args.weak_keys, args.weak_key_threshold.into())?,
                 args.fixed_key.as_deref().map(serde_json::from_str).transpose()
@@ -76,7 +76,7 @@ impl Settings {
                 args.ncw,
                 args.ncw_overlap
             )?,
-            save_frequency: NonZeroUsize::new((args.savefreq.unwrap_or_default() as usize)
+            save_frequency: NonZeroU64::new((args.savefreq.unwrap_or_default() as u64)
                 .max(Self::MIN_SAVE_FREQUENCY)),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
@@ -95,13 +95,13 @@ impl Settings {
     }
 
     #[inline]
-    pub fn number_of_trials(&self) -> usize {
-        self.number_of_trials
+    pub fn num_trials(&self) -> u64 {
+        self.num_trials
     }
 
     #[inline]
-    pub fn set_number_of_trials(&mut self, count: usize) {
-        self.number_of_trials = count;
+    pub fn set_num_trials(&mut self, count: u64) {
+        self.num_trials = count;
     }
 
     #[inline]
@@ -130,8 +130,8 @@ impl Settings {
     }
 
     #[inline]
-    pub fn save_frequency(&self) -> usize {
-        self.save_frequency.map_or(self.number_of_trials, usize::from)
+    pub fn save_frequency(&self) -> u64 {
+        self.save_frequency.map_or(self.num_trials, u64::from)
     }
 
     #[inline]
@@ -282,7 +282,7 @@ mod tests {
             verbose: 2,
         };
         let settings = Settings::from_args(args).unwrap();
-        assert_eq!(settings.number_of_trials, 17500);
+        assert_eq!(settings.num_trials, 17500);
         assert_eq!(settings.trial_settings.key_filter, KeyFilter::NonWeak(4));
         assert_eq!(settings.trial_settings.fixed_key, Some(Key::from_support(
             [6,25,77,145,165,212,230,232,247,261,306,341,449,466,493],
@@ -303,11 +303,11 @@ mod tests {
     #[test]
     fn settings_builder() {
         let settings = SettingsBuilder::default()
-            .number_of_trials(12345)
+            .num_trials(12345)
             .output(OutputTo::Void)
             .build().unwrap();
         assert_eq!(settings, Settings {
-            number_of_trials: 12345,
+            num_trials: 12345,
             trial_settings: TrialSettings::default(),
             save_frequency: None,
             record_max: 10000,

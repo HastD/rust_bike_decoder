@@ -134,7 +134,7 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
         for i in 0..BLOCK_LENGTH {
             for &j in h_supp[k] {
                 // If i + j >= BLOCK_LENGTH, this wraps around because we duplicated s
-                upc[k][i] += s.get(i + j as usize);
+                upc[k][i] += u8::from(s.get(i + j as usize));
             }
         }
     }
@@ -214,11 +214,12 @@ pub fn bf_masked_iter(
 fn multiply_avx2(
     output: &mut [u8],
     sparse: &[u32],
-    dense: &[u8],
+    dense: &[bool],
     block_length: usize
 ) {
     use safe_arch::{zeroed_m256i, add_i8_m256i};
     const AVX_BUFF_LEN: usize = 8;
+    let dense = bytemuck::cast_slice::<bool, u8>(dense);
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
     for i in (0 .. block_length / 32).step_by(AVX_BUFF_LEN) {
@@ -253,7 +254,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         for _ in 0..TRIALS {
             let key = Key::random(&mut rng);
-            let mut syn = Syndrome::from([1; BLOCK_LENGTH]);
+            let mut syn = Syndrome::new([true; BLOCK_LENGTH]);
             let upc = unsatisfied_parity_checks(&key, &mut syn);
             for k in 0..2 {
                 assert_eq!(&upc[k][..BLOCK_LENGTH], &[BLOCK_WEIGHT as u8; BLOCK_LENGTH]);

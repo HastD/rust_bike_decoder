@@ -173,24 +173,17 @@ impl fmt::Display for TaggedErrorVector {
 
 
 fn sample_c(key: &Key) -> Vec<Index> {
-    let mut supp: Vec<Index> = Vec::with_capacity(ROW_WEIGHT);
-    for i in 0..BLOCK_WEIGHT {
-        supp.push(key.h1().get(i));
-        supp.push(key.h0().get(i) + BLOCK_LENGTH as Index);
-    }
-    supp
+    key.h0().support().iter().map(|idx| *idx + BLOCK_LENGTH as Index)
+        .chain(key.h1().support().iter().copied())
+        .collect()
 }
 
 fn sample_n(key: &Key, block_flag: u8) -> Vec<Index>
 {
     if block_flag % 2 == 0 {
-        key.h0().support().to_vec()
+        key.h0().support().iter().copied().collect()
     } else {
-        let mut supp: Vec<Index> = Vec::with_capacity(BLOCK_WEIGHT);
-        for &idx in key.h1().support() {
-            supp.push(idx + BLOCK_LENGTH as Index);
-        }
-        supp
+        key.h1().support().iter().map(|idx| *idx + BLOCK_LENGTH as Index).collect()
     }
 }
 
