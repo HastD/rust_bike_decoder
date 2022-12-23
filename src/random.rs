@@ -13,7 +13,7 @@ use std::{
 use lazy_static::lazy_static;
 use rand::{RngCore, Error, SeedableRng, rngs::OsRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
@@ -122,8 +122,8 @@ impl RngCore for CustomThreadRng {
 
 type SeedInner = [u8; 32];
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Seed(SeedInner);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Seed(#[serde(with = "hex::serde")] SeedInner);
 
 impl Seed {
     pub fn new(arr: SeedInner) -> Self {
@@ -144,29 +144,13 @@ impl From<Seed> for SeedInner {
     }
 }
 
-impl TryFrom<String> for Seed {
+impl TryFrom<&str> for Seed {
     type Error = SeedFromHexError;
 
-    fn try_from(value: String) -> Result<Self, SeedFromHexError> {
+    fn try_from(value: &str) -> Result<Self, SeedFromHexError> {
         let bytes = hex::decode(value)?;
         let arr = SeedInner::try_from(&bytes[..])?;
         Ok(Self(arr))
-    }
-}
-
-impl<'de> Deserialize<'de> for Seed {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: Deserializer<'de>
-    {
-        Ok(Seed(hex::serde::deserialize(deserializer)?))
-    }
-}
-
-impl Serialize for Seed {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        hex::serde::serialize(self.0, serializer)
     }
 }
 

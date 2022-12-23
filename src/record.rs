@@ -7,7 +7,7 @@ use crate::{
     vectors::SparseErrorVector,
 };
 use std::{fmt, ops::AddAssign, time::Duration};
-use serde::{Serialize, Deserialize};
+use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -70,9 +70,12 @@ pub struct DataRecord {
     bf_masked_threshold: u8,
     key_filter: KeyFilter,
     fixed_key: Option<Key>,
-    #[serde(flatten)] decoding_failure_ratio: DecodingFailureRatio,
+    #[serde(flatten)]
+    decoding_failure_ratio: DecodingFailureRatio,
     decoding_failures: Vec<RecordedDecodingFailure>,
     seed: Seed,
+    #[serde(serialize_with = "serialize_duration",
+        deserialize_with = "deserialize_duration")]
     runtime: Duration,
     thread_count: Option<usize>,
 }
@@ -191,3 +194,37 @@ impl DecodingFailureRatio {
 #[derive(Clone, Copy, Debug, Error)]
 #[error("invalid decoding failure ratio: number of failures must be <= number of trials")]
 pub struct InvalidDFRError;
+
+fn serialize_duration<S>(duration: &Duration, ser: S) -> Result<S::Ok, S::Error>
+    where S: Serializer,
+{
+    let secs_str = format!("{}.{:09}", duration.as_secs(), duration.subsec_nanos());
+    ser.serialize_str(&secs_str)
+}
+
+fn deserialize_duration<'de, D>(de: D) -> Result<Duration, D::Error>
+    where D: Deserializer<'de>,
+{
+    let secs_str = <&str>::deserialize(de)?;
+    let secs = secs_str.parse::<f64>().map_err(D::Error::custom)?;
+    Duration::try_from_secs_f64(secs).map_err(D::Error::custom)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_record_serde() {
+        let json_str = r#"{"r":587,"d":15,"t":18,"iterations":7,"gray_threshold_diff":3,
+            "bf_threshold_min":8,"bf_masked_threshold":9,"key_filter":"Any","fixed_key":null,
+            "failure_count":1,"trials":1000000,"decoding_failures":[{"h0":[11,21,100,124,229,271,
+            284,307,380,397,420,438,445,495,555],"h1":[10,41,50,59,62,119,153,164,179,208,284,384,
+            438,513,554],"e_supp":[42,187,189,336,409,445,464,485,524,532,617,804,877,892,1085,
+            1099,1117,1150],"e_source":"Random","thread":2}],"seed":
+            "52e19bb7d8474289f86caee35a11ac16dd09902d84fa01173ad83d7b1c376109","runtime":
+            "1.478772912","thread_count":8}"#.replace(&[' ', '\n'], "");
+        let data_record: DataRecord = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(json_str, serde_json::to_string(&data_record).unwrap());
+    }
+}

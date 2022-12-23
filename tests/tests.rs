@@ -106,8 +106,7 @@ fn guaranteed_failure_settings() -> TrialSettings {
         None,
         Some(NearCodewordClass::N),
         Some(BLOCK_WEIGHT),
-    )
-    .unwrap()
+    ).unwrap()
 }
 
 #[test]
@@ -126,8 +125,7 @@ fn receive_decoding_failure() {
     let (tx, rx) = channel();
     let mut rng = random::custom_thread_rng();
     parallel::trial_iteration(&settings, &tx, &mut rng);
-    let (_result, thread_id) = rx
-        .recv_timeout(Duration::from_secs(1))
+    let (_result, thread_id) = rx.recv_timeout(Duration::from_secs(1))
         .expect("Should receive decoding failure in under 1 second");
     assert_eq!(thread_id, random::current_thread_id())
 }
@@ -155,7 +153,7 @@ fn receive_progress_message() {
 #[test]
 fn main_single_threaded_test() {
     let seed = Seed::try_from(
-        "052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf".to_string(),
+        "052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf"
     ).unwrap();
     let settings = SettingsBuilder::default()
         .number_of_trials(100_000)
@@ -192,9 +190,8 @@ fn main_single_threaded_test() {
 
 fn multithreaded_example_settings() -> Settings {
     let seed = Seed::try_from(
-        "53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61".to_string(),
-    )
-    .unwrap();
+        "53b3f64c5c1421b41fef9c6485a98f6739ba8cceedbe57cba1770324eb8f3b61"
+    ).unwrap();
     SettingsBuilder::default()
         .number_of_trials(200_000)
         .output(OutputTo::Void)

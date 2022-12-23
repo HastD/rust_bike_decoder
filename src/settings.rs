@@ -80,7 +80,7 @@ impl Settings {
                 .max(Self::MIN_SAVE_FREQUENCY)),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
-            seed: args.seed.map(Seed::try_from).transpose()
+            seed: args.seed.as_deref().map(Seed::try_from).transpose()
                 .context("--seed should be 256-bit hex string")?,
             seed_index: args.seed_index,
             threads: args.threads.map_or_else(
