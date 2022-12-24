@@ -2,7 +2,7 @@ use crate::{
     application,
     decoder::DecodingFailure,
     random::{get_or_insert_global_seed, try_insert_global_seed, current_thread_id,
-        custom_thread_rng, global_thread_count},
+        custom_thread_rng},
     record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
@@ -42,7 +42,7 @@ pub fn trial_loop(
         let new_trials = settings.save_frequency().min(trials_remaining);
         let new_failure_count = pool.install(|| (0..new_trials).into_par_iter().map_with(
             (settings.trial_settings(), tx_results),
-            |(settings, tx), _| trial_iteration(*settings, tx, &mut custom_thread_rng())
+            |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng())
         ).sum());
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
@@ -85,8 +85,10 @@ pub fn record_trial_results(
         // Handle all progress updates currently in channel, then continue (w/ timeout delay)
         while rx_progress_open {
             match rx_progress.recv_timeout(Duration::from_millis(100)) {
-                Ok(dfr) =>
-                    application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?,
+                Ok(dfr) => {
+                    application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+                    application::write_json(settings.output(), &data)?;
+                }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
                     // progress channel closed, flag this loop to be skipped
@@ -100,18 +102,15 @@ pub fn record_trial_results(
     // Receive and handle all remaining progress updates
     for dfr in rx_progress {
         application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+        application::write_json(settings.output(), &data)?;
     }
-    // trial_loop has now finished and all progress updates have been handled
-    data.set_thread_count(global_thread_count());
-    data.set_runtime(start_time.elapsed());
-    application::write_json(settings.output(), &data)?;
     Ok(data)
 }
 
 pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
-        println!("{}", application::start_message(settings));
+        eprintln!("{}", application::start_message(settings));
     }
     application::check_writable(settings.output())?;
     // Set global PRNG seed used for generating data
@@ -123,15 +122,16 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let settings_clone = settings.clone();
     // Start main trial loop in separate thread
     rayon::spawn(move || {
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(settings_clone.threads()).build()
-            .expect("Rayon thread pool should be initialized");
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(settings_clone.threads())
+            .build().expect("Rayon thread pool should be initialized");
         trial_loop(&settings_clone, tx_results, tx_progress, pool)
             .expect("tx_progress should not close prematurely");
     });
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
     if settings.verbose() >= 1 {
-        println!("{}", application::end_message(data.decoding_failure_ratio(),
+        eprintln!("{}", application::end_message(data.decoding_failure_ratio(),
             data.runtime()));
     }
     Ok(data)

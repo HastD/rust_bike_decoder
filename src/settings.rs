@@ -9,7 +9,7 @@ use clap::Parser;
 use derive_builder::Builder;
 use thiserror::Error;
 
-#[derive(Parser)]
+#[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     #[arg(short='N',long,help="Number of trials (required)")]
@@ -76,8 +76,9 @@ impl Settings {
                 args.ncw,
                 args.ncw_overlap
             )?,
-            save_frequency: NonZeroU64::new((args.savefreq.unwrap_or_default() as u64)
-                .max(Self::MIN_SAVE_FREQUENCY)),
+            save_frequency: args.savefreq.map(|s| s as u64)
+                .map(|s| s.max(Self::MIN_SAVE_FREQUENCY))
+                .and_then(NonZeroU64::new),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
             seed: args.seed.as_deref().map(Seed::try_from).transpose()
@@ -230,17 +231,16 @@ pub enum OutputTo {
 }
 
 impl Default for OutputTo {
+    #[inline]
     fn default() -> Self {
         Self::Stdout
     }
 }
 
 impl OutputTo {
+    #[inline]
     pub fn is_file(&self) -> bool {
-        match *self {
-            Self::File(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Self::File(_, _))
     }
 }
 
@@ -281,6 +281,8 @@ mod tests {
             threads: Some(usize::MAX),
             verbose: 2,
         };
+        let mut args2 = args.clone();
+        args2.savefreq = None;
         let settings = Settings::from_args(args).unwrap();
         assert_eq!(settings.num_trials, 17500);
         assert_eq!(settings.trial_settings.key_filter, KeyFilter::NonWeak(4));
@@ -298,6 +300,8 @@ mod tests {
         assert!(settings.seed_index().is_none());
         assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
         assert_eq!(settings.output, OutputTo::File(PathBuf::from("test/path/to/file.json"), true));
+        let settings2 = Settings::from_args(args2).unwrap();
+        assert_eq!(settings2.save_frequency(), settings2.num_trials());
     }
 
     #[test]
@@ -317,5 +321,6 @@ mod tests {
             threads: 1,
             output: OutputTo::Void,
         });
+        assert_eq!(settings.save_frequency(), settings.num_trials());
     }
 }

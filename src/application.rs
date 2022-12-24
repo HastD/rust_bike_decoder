@@ -74,7 +74,7 @@ pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-pub fn start_message(settings: &Settings) -> String {
+pub(crate) fn start_message(settings: &Settings) -> String {
     let parameter_message = format!("    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
         BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF);
     let weak_key_message = match settings.key_filter() {
@@ -104,8 +104,8 @@ pub fn start_message(settings: &Settings) -> String {
         thread_message)
 }
 
-pub fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> String {
-    let avg_nanos = runtime.as_nanos() / dfr.num_trials() as u128;
+pub(crate) fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> String {
+    let avg_nanos = runtime.as_nanos() / u128::from(dfr.num_trials());
     let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
     let avg_text = if avg_mcs >= 100 {
         format!("{} μs", avg_mcs)
@@ -129,10 +129,10 @@ pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
         data: &mut DataRecord, settings: &Settings) {
     if data.decoding_failures().len() < settings.record_max() {
         if settings.verbose() >= 3 {
-            println!("Decoding failure found!");
-            println!("Key: {}\nError vector: {}", df.key(), df.vector());
+            eprintln!("Decoding failure found!");
+            eprintln!("Key: {}\nError vector: {}", df.key(), df.vector());
             if data.decoding_failures().len() + 1 == settings.record_max() {
-                println!("Maximum number of decoding failures recorded.");
+                eprintln!("Maximum number of decoding failures recorded.");
             }    
         }
         data.push_decoding_failure(RecordedDecodingFailure::new(df, thread_id));
@@ -146,11 +146,8 @@ pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
     if settings.parallel() {
         data.set_thread_count(global_thread_count());
     }
-    if settings.output().is_file() || settings.verbose() >= 2 {
-        write_json(settings.output(), &data)?;
-    }    
     if settings.verbose() >= 2 {
-        println!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
+        eprintln!("Found {} decoding failures in {} trials (runtime: {:.3} s)",
             data.num_failures(), data.num_trials(), runtime.as_secs_f64());
     }
     Ok(())
@@ -159,7 +156,7 @@ pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
 pub fn run(settings: &Settings) -> Result<DataRecord> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
-        println!("{}", start_message(settings));
+        eprintln!("{}", start_message(settings));
     }
     check_writable(settings.output())?;
     // Set PRNG seed used for generating data
@@ -182,13 +179,11 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
         handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+        write_json(settings.output(), &data)?;
         trials_remaining -= new_trials;
     }
-    // Write final data
-    data.set_runtime(start_time.elapsed());
-    write_json(settings.output(), &data)?;
     if settings.verbose() >= 1 {
-        println!("{}", end_message(data.decoding_failure_ratio(), data.runtime()));
+        eprintln!("{}", end_message(data.decoding_failure_ratio(), data.runtime()));
     }
     Ok(data)
 }

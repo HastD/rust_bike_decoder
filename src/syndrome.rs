@@ -7,7 +7,7 @@ use std::{fmt, ops::Add};
 // code in decoder.rs that uses AVX2 instructions.
 // However, only bits up to BLOCK_LENGTH are ever used outside of that.
 #[derive(Debug, Default, Clone)]
-pub struct Syndrome(DenseVector<DOUBLE_SIZE_AVX>);
+pub struct Syndrome(DenseVector<{2*SIZE_AVX}>);
 
 impl Syndrome {
     pub fn zero() -> Self {
@@ -15,7 +15,7 @@ impl Syndrome {
     }
 
     pub fn new(list: [bool; BLOCK_LENGTH]) -> Self {
-        let mut v = [false; DOUBLE_SIZE_AVX];
+        let mut v = [false; 2*SIZE_AVX];
         v[..BLOCK_LENGTH].copy_from_slice(&list);
         Self(DenseVector::new(v))
     }

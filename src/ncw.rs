@@ -181,7 +181,7 @@ fn sample_c(key: &Key) -> Vec<Index> {
 fn sample_n(key: &Key, block_flag: u8) -> Vec<Index>
 {
     if block_flag % 2 == 0 {
-        key.h0().support().iter().copied().collect()
+        key.h0().support().to_vec()
     } else {
         key.h1().support().iter().map(|idx| *idx + BLOCK_LENGTH as Index).collect()
     }

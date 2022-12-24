@@ -198,6 +198,7 @@ impl fmt::Display for Key {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[repr(u8)]
 pub enum WeakType {
     Type1 = 1,
     Type2 = 2,

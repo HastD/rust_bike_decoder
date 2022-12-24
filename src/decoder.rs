@@ -120,10 +120,10 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     ))]
     {
         if std::arch::is_x86_feature_detected!("avx2") {
-            fn truncate_buffer(buf: [u8; DOUBLE_SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
+            fn truncate_buffer(buf: [u8; 2*SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
                 <[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
             }
-            let mut upc = [[0u8; DOUBLE_SIZE_AVX]; 2];
+            let mut upc = [[0u8; 2*SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);
             multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), SIZE_AVX);
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
@@ -154,12 +154,14 @@ pub fn bf_iter(
     let mut black = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
     let mut gray = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
     for k in 0..2 {
-        for i in 0..BLOCK_LENGTH {
-            if upc[k][i] >= thr {
+        for (i, upc_i) in upc[k].iter().enumerate()
+            .filter(|&(_, upc_i)| *upc_i >= gray_thr)
+        {
+            if *upc_i >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
                 black[k].push(i);
-            } else if upc[k][i] >= gray_thr {
+            } else {
                 gray[k].push(i);
             }
         }
@@ -176,11 +178,11 @@ pub fn bf_iter_no_mask(
 ) {
     let upc = unsatisfied_parity_checks(key, s);
     for k in 0..2 {
-        for i in 0..BLOCK_LENGTH {
-            if upc[k][i] >= thr {
-                e_out.flip(i + k*BLOCK_LENGTH);
-                s.recompute_flipped_bit(key, k, i);
-            }
+        for (i, _) in upc[k].iter().enumerate()
+            .filter(|&(_, upc_i)| *upc_i >= thr)
+        {
+            e_out.flip(i + k*BLOCK_LENGTH);
+            s.recompute_flipped_bit(key, k, i);
         }
     }
 }

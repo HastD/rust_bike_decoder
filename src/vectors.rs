@@ -211,11 +211,9 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn relative_shifts(&self, other: &Self) -> [[Index; WEIGHT]; WEIGHT] {
         let length = self.length();
         let mut shifts = [[0 as Index; WEIGHT]; WEIGHT];
-        for i in 0..WEIGHT {
-            let self_i = self.get(i);
+        for (i, &self_i) in self.0.iter().enumerate() {
             let length_plus_self_i = length + self_i;
-            for j in 0..WEIGHT {
-                let other_j = other.get(j);
+            for (j, &other_j) in other.0.iter().enumerate() {
                 shifts[i][j] = if self_i < other_j {
                     length_plus_self_i - other_j
                 } else {
@@ -290,8 +288,10 @@ impl<const W: usize, const L: usize> Eq for SparseVector<W, L> { }
 
 impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let str_supp: Vec<_> = self.support().iter().map(|idx| idx.to_string()).collect();
-        write!(f, "[{}]", str_supp.join(", "))
+        let str_supp = self.support().iter()
+            .map(|idx| idx.to_string())
+            .collect::<Vec<_>>().join(", ");
+        write!(f, "[{}]", str_supp)
     }
 }
 
@@ -345,13 +345,10 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     }
 
     pub fn support(&self) -> Vec<Index> {
-        let mut supp: Vec<Index> = Vec::new();
-        for i in 0..LENGTH {
-            if self.0[i] {
-                supp.push(i as Index);
-            }
-        }
-        supp
+        self.0.iter().enumerate()
+            .filter(|&(_, bit)| *bit)
+            .map(|(idx, _)| idx as Index)
+            .collect()
     }
 
     pub fn duplicate_up_to(&mut self, length: usize) {

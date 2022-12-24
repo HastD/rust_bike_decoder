@@ -65,7 +65,7 @@ The command-line program runs the following steps in a loop a number of times sp
 3. Compute the syndrome of the error vector.
 4. Use the BGF algorithm to attempt to decode the syndrome. Record any decoding failures.
 
-The program outputs the resulting data in JSON format, either to a file specified with the `-o` option or to `stdout`. If the specified output file already exists and is nonempty, it will be backed up by appending a random UUID to the filename unless the `--overwrite` flag is provided. If the `-o` option is not provided and no verbose flags are given, the output to `stdout` will consist only of the JSON data and thus can be used with shell redirection operators (e.g. piping to another program that expects JSON input).
+The program outputs the resulting data in JSON format, either to a file specified with the `-o` option or to `stdout`. If the specified output file already exists and is nonempty, it will be backed up by appending a random UUID to the filename unless the `--overwrite` flag is provided. If the `-o` option is not provided, the output to `stdout` will consist only of the JSON data (possibly multiple times if `--savefreq` is specified) and thus can be used with shell redirection operators (e.g. piping to another program that expects JSON input).
 
 Additional options can be listed with the `--help` option, including filtering the keys to exclude certain classes of "weak key" or to generate *only* weak keys, limiting the number of decoding failures recorded, or running multiple threads at once. A useful option for long-running trials is `--savefreq`, which causes intermediate results to be written to disk, thus minimizing data loss if the program is interrupted.
 
