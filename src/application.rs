@@ -12,7 +12,7 @@ use std::{
     io::{self, Write},
     time::{Duration, Instant},
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use rand::Rng;
 use serde::Serialize;
 use uuid::Uuid;
@@ -32,11 +32,11 @@ pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R) -> DecodingResul
     DecodingResult::from(key, tagged_error_vector)
 }
 
+#[inline]
 pub fn decoding_failure_trial<R>(settings: &TrialSettings, rng: &mut R) -> Option<DecodingFailure>
     where R: Rng + ?Sized
 {
-    let result = decoding_trial(settings, rng);
-    DecodingFailure::try_from(result).ok()
+    decoding_trial(settings, rng).try_into().ok()
 }
 
 pub fn check_writable(output: &OutputTo) -> Result<()> {
@@ -58,18 +58,30 @@ pub fn check_writable(output: &OutputTo) -> Result<()> {
     Ok(())
 }
 
+fn write_fallback<T>(err: Error, data: &impl Serialize) -> Result<T> {
+    eprintln!("Error writing JSON data to file; dumping to stderr.");
+    let json_str = serde_json::to_string(data)
+        .context("Fallback failed, data cannot be written")?;
+    eprintln!("{}", json_str);
+    Err(err)
+}
+
 /// Serializes data in JSON format to specified output location
 pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
     let mut writer: Box<dyn Write> = match output {
         OutputTo::Stdout => Box::new(io::stdout()),
         OutputTo::File(filename, _) => {
-            let file = File::create(filename).context("Output file should be writable")?;
+            let file = File::create(filename)
+                .or_else(|err| write_fallback(err.into(), data))
+                .context("Output file should be writable")?;
             Box::new(file)
         }
         OutputTo::Void => return Ok(()),
     };
     let mut ser = serde_json::Serializer::new(&mut writer);
-    data.serialize(&mut ser).context("data should be writable as JSON")?;
+    data.serialize(&mut ser)
+        .or_else(|err| write_fallback(err.into(), data))
+        .context("data should be writable as JSON")?;
     writer.write_all(b"\n")?;
     Ok(())
 }

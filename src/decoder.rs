@@ -120,8 +120,9 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     ))]
     {
         if std::arch::is_x86_feature_detected!("avx2") {
+            #[inline]
             fn truncate_buffer(buf: [u8; 2*SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
-                <[u8; BLOCK_LENGTH]>::try_from(&buf[..BLOCK_LENGTH]).unwrap()
+                (&buf[..BLOCK_LENGTH]).try_into().unwrap()
             }
             let mut upc = [[0u8; 2*SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);

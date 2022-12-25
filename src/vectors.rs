@@ -346,8 +346,7 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
 
     pub fn support(&self) -> Vec<Index> {
         self.0.iter().enumerate()
-            .filter(|&(_, bit)| *bit)
-            .map(|(idx, _)| idx as Index)
+            .filter_map(|(idx, bit)| bit.then_some(idx as Index))
             .collect()
     }
 
