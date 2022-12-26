@@ -205,18 +205,12 @@ pub enum WeakType {
     Type3 = 3,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum KeyFilter {
+    #[default]
     Any,
     NonWeak(usize),
     Weak(WeakType, usize),
-}
-
-impl Default for KeyFilter {
-    #[inline]
-    fn default() -> Self {
-        Self::Any
-    }
 }
 
 impl KeyFilter {

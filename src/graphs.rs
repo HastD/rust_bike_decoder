@@ -8,11 +8,11 @@ pub fn tanner_graph(key: &Key) -> UnGraph<(), ()> {
     let mut max_i = 0;
     for k in 0..r {
         for &b in key.h0().support() {
-            edges[max_i] = ((b as u32 + k) % r, k + 2*r);
+            edges[max_i] = ((b + k) % r, k + 2*r);
             max_i += 1;
         }
         for &b in key.h1().support() {
-            edges[max_i] = (((b as u32 + k) % r) + r, k + 2*r);
+            edges[max_i] = (((b + k) % r) + r, k + 2*r);
             max_i += 1;
         }
     }

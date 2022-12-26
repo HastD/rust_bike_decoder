@@ -10,7 +10,6 @@ use std::{
     sync::{Mutex, atomic::{AtomicUsize, Ordering}},
     thread_local,
 };
-use lazy_static::lazy_static;
 use rand::{RngCore, Error, SeedableRng, rngs::OsRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
@@ -24,10 +23,8 @@ pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
     rng
 }
 
-lazy_static! {
-    static ref GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
-    static ref GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
-}
+static GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
+static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub fn global_seed() -> Option<Seed> {
     *GLOBAL_SEED.lock().expect("Should have acquired global seed lock")

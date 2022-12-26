@@ -84,8 +84,12 @@ impl Settings {
             seed: args.seed.as_deref().map(Seed::try_from).transpose()
                 .context("--seed should be 256-bit hex string")?,
             seed_index: args.seed_index,
+            // Default if --threads not specified:
+            // * If --parallel flag not set, settings.threads = 1
+            // * If --parallel flag set, settings.threads = 0, which tells
+            //   Rayon to automatically determine the number of threads.
             threads: args.threads.map_or_else(
-                || if args.parallel { 0 } else { 1 },
+                || usize::from(!args.parallel),
                 |threads| threads.clamp(1, Self::MAX_THREAD_COUNT)),
             output: match args.output {
                 Some(path) => OutputTo::File(path.into(), args.overwrite),
@@ -223,18 +227,12 @@ impl TrialSettings {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum OutputTo {
+    #[default]
     Stdout,
     File(PathBuf, bool),
     Void,
-}
-
-impl Default for OutputTo {
-    #[inline]
-    fn default() -> Self {
-        Self::Stdout
-    }
 }
 
 impl OutputTo {

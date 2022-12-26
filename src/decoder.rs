@@ -154,11 +154,11 @@ pub fn bf_iter(
     let gray_thr = thr - GRAY_THRESHOLD_DIFF;
     let mut black = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
     let mut gray = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
-    for k in 0..2 {
-        for (i, upc_i) in upc[k].iter().enumerate()
-            .filter(|&(_, upc_i)| *upc_i >= gray_thr)
+    for (k, upc_k) in upc.iter().enumerate() {
+        for (i, upc_ki) in upc_k.iter().enumerate()
+            .filter(|&(_, upc_ki)| *upc_ki >= gray_thr)
         {
-            if *upc_i >= thr {
+            if *upc_ki >= thr {
                 e_out.flip(i + k*BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
                 black[k].push(i);
@@ -178,9 +178,9 @@ pub fn bf_iter_no_mask(
     thr: u8
 ) {
     let upc = unsatisfied_parity_checks(key, s);
-    for k in 0..2 {
-        for (i, _) in upc[k].iter().enumerate()
-            .filter(|&(_, upc_i)| *upc_i >= thr)
+    for (k, upc_k) in upc.iter().enumerate() {
+        for (i, _) in upc_k.iter().enumerate()
+            .filter(|&(_, upc_ki)| *upc_ki >= thr)
         {
             e_out.flip(i + k*BLOCK_LENGTH);
             s.recompute_flipped_bit(key, k, i);
