@@ -226,14 +226,14 @@ mod tests {
 
     #[test]
     fn data_record_serde() {
-        let json_str = r#"{"r":587,"d":15,"t":18,"iterations":7,"gray_threshold_diff":3,
+        let json_str: String = r#"{"r":587,"d":15,"t":18,"iterations":7,"gray_threshold_diff":3,
             "bf_threshold_min":8,"bf_masked_threshold":9,"key_filter":"Any","fixed_key":null,
             "num_failures":1,"num_trials":1000000,"decoding_failures":[{"h0":[11,21,100,124,229,
             271,284,307,380,397,420,438,445,495,555],"h1":[10,41,50,59,62,119,153,164,179,208,284,
             384,438,513,554],"e_supp":[42,187,189,336,409,445,464,485,524,532,617,804,877,892,
             1085,1099,1117,1150],"e_source":"Random","thread":2}],"seed":
             "52e19bb7d8474289f86caee35a11ac16dd09902d84fa01173ad83d7b1c376109","runtime":
-            "1.478772912","thread_count":8}"#.replace(&[' ', '\n'], "");
+            "1.478772912","thread_count":8}"#.split_whitespace().collect();
         let data_record: DataRecord = serde_json::from_str(&json_str).unwrap();
         assert_eq!(json_str, serde_json::to_string(&data_record).unwrap());
     }

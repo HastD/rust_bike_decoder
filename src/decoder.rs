@@ -258,9 +258,8 @@ mod tests {
         for _ in 0..TRIALS {
             let key = Key::random(&mut rng);
             let mut syn = Syndrome::new([true; BLOCK_LENGTH]);
-            let upc = unsatisfied_parity_checks(&key, &mut syn);
-            for k in 0..2 {
-                assert_eq!(&upc[k][..BLOCK_LENGTH], &[BLOCK_WEIGHT as u8; BLOCK_LENGTH]);
+            for upc in unsatisfied_parity_checks(&key, &mut syn) {
+                assert_eq!(&upc[..BLOCK_LENGTH], &[BLOCK_WEIGHT as u8; BLOCK_LENGTH]);
             }
         }
     }

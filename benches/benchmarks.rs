@@ -153,7 +153,7 @@ pub fn group_record(c: &mut Criterion) {
             || {
                 let (tx, rx) = channel();
                 for _ in 0..10 {
-                    let df = decoding_failure_trial(&settings.trial_settings(), &mut rng).unwrap();
+                    let df = decoding_failure_trial(settings.trial_settings(), &mut rng).unwrap();
                     tx.send(df).ok();
                 }
                 drop(tx);

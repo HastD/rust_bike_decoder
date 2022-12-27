@@ -90,7 +90,7 @@ fn syndrome_e_out_consistent() {
         let mut s = Syndrome::from_sparse(&key, &e_in);
         let s_original = s.clone();
         let mut e_out = ErrorVector::zero();
-        let (black, _) = decoder::bf_iter(&key, &mut s, &mut e_out, BF_THRESHOLD_MIN as u8);
+        let (black, _) = decoder::bf_iter(&key, &mut s, &mut e_out, BF_THRESHOLD_MIN);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));
         decoder::bf_masked_iter(&key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD);
         assert_eq!(s, s_original.clone() + Syndrome::from_dense(&key, &e_out));

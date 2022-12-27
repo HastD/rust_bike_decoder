@@ -1,19 +1,17 @@
 use crate::parameters::*;
-use lazy_static::lazy_static;
 use num::{BigInt, BigRational, ToPrimitive};
 use num_integer::binomial;
+use once_cell::sync::Lazy;
 use thiserror::Error;
 
-lazy_static! {
-    pub static ref THRESHOLD_CACHE: Vec<u8> = {
-        let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        let x = compute_x(r, d, t).expect("Must be able to compute threshold constant X");
-        (0..=BLOCK_LENGTH).map(|ws|
-            exact_threshold_ineq(ws, r, d, t, Some(x))
-                .expect("Must be able to compute thresholds")
-        ).collect()
-    };
-}
+pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
+    let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
+    let x = compute_x(r, d, t).expect("Must be able to compute threshold constant X");
+    (0..=BLOCK_LENGTH).map(|ws|
+        exact_threshold_ineq(ws, r, d, t, Some(x))
+            .expect("Must be able to compute thresholds")
+    ).collect()
+});
 
 fn big_binomial(n: usize, k: usize) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))

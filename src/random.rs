@@ -3,17 +3,32 @@
 // This is a modified version of the implementation of rand::ThreadRng,
 // suitable for applications where reproducibility of the results is desired.
 
+use rand::{rngs::OsRng, Error, RngCore, SeedableRng};
+use rand_xoshiro::Xoshiro256PlusPlus;
+use serde::{Deserialize, Serialize};
 use std::{
     cell::UnsafeCell,
     fmt,
     rc::Rc,
-    sync::{Mutex, atomic::{AtomicUsize, Ordering}},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    },
     thread_local,
 };
-use rand::{RngCore, Error, SeedableRng, rngs::OsRng};
-use rand_xoshiro::Xoshiro256PlusPlus;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+static GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
+static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+thread_local! {
+    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::AcqRel);
+    static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
+        let seed = get_or_insert_global_seed(None);
+        let rng = get_rng_from_seed(seed, current_thread_id());
+        Rc::new(UnsafeCell::new(rng))
+    }
+}
 
 pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
     let mut rng = Xoshiro256PlusPlus::from_seed(seed.into());
@@ -22,9 +37,6 @@ pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
     }
     rng
 }
-
-static GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
-static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub fn global_seed() -> Option<Seed> {
     *GLOBAL_SEED.lock().expect("Should have acquired global seed lock")
@@ -52,15 +64,6 @@ pub fn global_thread_count() -> usize {
     GLOBAL_THREAD_COUNT.load(Ordering::Acquire)
 }
 
-thread_local! {
-    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::AcqRel);
-    static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
-        let seed = get_or_insert_global_seed(None);
-        let rng = get_rng_from_seed(seed, current_thread_id());
-        Rc::new(UnsafeCell::new(rng))
-    }
-}
-
 pub fn current_thread_id() -> usize {
     CURRENT_THREAD_ID.with(|x| *x)
 }
@@ -70,7 +73,9 @@ pub fn current_thread_id() -> usize {
 /// This allows for fast pseudorandom number generation across multiple threads
 /// with fully reproducible results given GLOBAL_SEED.
 pub fn custom_thread_rng() -> CustomThreadRng {
-    CustomThreadRng { rng: CUSTOM_THREAD_RNG_KEY.with(|t| t.clone()) }
+    CustomThreadRng {
+        rng: CUSTOM_THREAD_RNG_KEY.with(|t| t.clone()),
+    }
 }
 
 // Note: Debug implementation intentionally leaks internal state.
@@ -173,7 +178,7 @@ mod tests {
         let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
         *global_seed = seed;
     }
-    
+
     #[test]
     fn global_seed_init() {
         overwrite_global_seed(None);
