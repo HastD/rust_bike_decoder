@@ -140,7 +140,7 @@ fn receive_progress_message() {
         .num_threads(settings.threads())
         .build()
         .unwrap();
-    parallel::trial_loop(&settings, tx_results, tx_progress, pool).unwrap();
+    parallel::trial_loop(&settings, &tx_results, &tx_progress, pool).unwrap();
     let dfr = rx.recv_timeout(Duration::from_secs(1))
         .expect("Should receive progress update in under 1 second");
     assert_eq!(dfr.num_failures(), 0);

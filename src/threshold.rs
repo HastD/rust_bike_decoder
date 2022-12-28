@@ -1,6 +1,5 @@
 use crate::parameters::*;
-use num::{BigInt, BigRational, ToPrimitive};
-use num_integer::binomial;
+use num::{integer::binomial, BigInt, BigRational, ToPrimitive};
 use once_cell::sync::Lazy;
 use thiserror::Error;
 

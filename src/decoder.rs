@@ -53,6 +53,17 @@ pub struct DecodingFailure {
     vector: TaggedErrorVector,
 }
 
+impl From<DecodingFailure> for DecodingResult {
+    fn from(df: DecodingFailure) -> Self {
+        let (key, vector) = df.take_key_vector();
+        Self {
+            key,
+            vector,
+            success: false,
+        }
+    }
+}
+
 impl TryFrom<DecodingResult> for DecodingFailure {
     type Error = NotFailureError;
 

@@ -32,8 +32,8 @@ pub fn trial_iteration<R: Rng + ?Sized>(
 // progress updates (counts of decoding failures and trials run) via tx_progress.
 pub fn trial_loop(
     settings: &Settings,
-    tx_results: Sender<(DecodingFailure, usize)>,
-    tx_progress: Sender<DecodingFailureRatio>,
+    tx_results: &Sender<(DecodingFailure, usize)>,
+    tx_progress: &Sender<DecodingFailureRatio>,
     pool: rayon::ThreadPool,
 ) -> Result<()> {
     let mut trials_remaining = settings.num_trials();
@@ -125,7 +125,7 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(settings_clone.threads())
             .build().expect("Rayon thread pool should be initialized");
-        trial_loop(&settings_clone, tx_results, tx_progress, pool)
+        trial_loop(&settings_clone, &tx_results, &tx_progress, pool)
             .expect("tx_progress should not close prematurely");
     });
     // Process messages from trial_loop

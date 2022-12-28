@@ -18,15 +18,19 @@ impl NearCodewordClass {
             Self::TwoN => ERROR_WEIGHT,
         }
     }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::C => "C",
+            Self::N => "N",
+            Self::TwoN => "2N",
+        }
+    }
 }
 
 impl fmt::Display for NearCodewordClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::C => write!(f, "C"),
-            Self::N => write!(f, "N"),
-            Self::TwoN => write!(f, "2N"),
-        }
+        f.write_str(self.label())
     }
 }
 
@@ -36,11 +40,7 @@ impl clap::ValueEnum for NearCodewordClass {
         &[Self::C, Self::N, Self::TwoN]
     }
     fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
-        match self {
-            Self::C => Some(clap::builder::PossibleValue::new("C")),
-            Self::N => Some(clap::builder::PossibleValue::new("N")),
-            Self::TwoN => Some(clap::builder::PossibleValue::new("2N")),
-        }
+        Some(clap::builder::PossibleValue::new(self.label()))
     }
 }
 
@@ -141,9 +141,7 @@ impl TaggedErrorVector {
         let dist = Uniform::new(0, ROW_LENGTH as Index);
         while ctr < ERROR_WEIGHT {
             supp[ctr] = dist.sample(rng);
-            if sample.contains(&supp[ctr]) || supp[l..ctr].contains(&supp[ctr]) {
-                continue;
-            } else {
+            if !sample.contains(&supp[ctr]) && !supp[l..ctr].contains(&supp[ctr]) {
                 ctr += 1;
             }
         }

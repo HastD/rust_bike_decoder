@@ -91,13 +91,8 @@ impl Syndrome {
     }
 
     pub fn hamming_weight(&self) -> usize {
-        let mut wt = 0;
-        for i in 0..BLOCK_LENGTH {
-            if self.get(i) {
-                wt += 1;
-            }
-        }
-        wt
+        let bytes: &[u8] = bytemuck::cast_slice(self.contents());
+        bytecount::count(bytes, 1_u8)
     }
 
     pub fn duplicate_up_to(&mut self, length: usize) {
@@ -120,7 +115,7 @@ impl Syndrome {
 impl Add for Syndrome {
     type Output = Self;
     fn add(self, other: Self) -> Self {
-        Self(self.0.add_mod2(other.0))
+        Self(self.0.add_mod2(&other.0))
     }
 }
 

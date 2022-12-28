@@ -355,7 +355,7 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         right[..length].copy_from_slice(left);
     }
 
-    pub fn add_mod2(mut self, other: Self) -> Self {
+    pub fn add_mod2(mut self, other: &Self) -> Self {
         for i in 0..LENGTH {
             self.0[i] ^= other.get(i);
         }

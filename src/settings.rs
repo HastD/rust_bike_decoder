@@ -91,10 +91,10 @@ impl Settings {
             threads: args.threads.map_or_else(
                 || usize::from(!args.parallel),
                 |threads| threads.clamp(1, Self::MAX_THREAD_COUNT)),
-            output: match args.output {
-                Some(path) => OutputTo::File(path.into(), args.overwrite),
-                None => OutputTo::Stdout,
-            },
+            output: args.output.map_or(
+                OutputTo::Stdout,
+                |path| OutputTo::File(path.into(), args.overwrite),
+            ),
         };
         Ok(settings)
     }
