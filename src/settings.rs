@@ -3,10 +3,11 @@ use crate::{
     ncw::NearCodewordClass,
     random::Seed,
 };
-use std::{num::NonZeroU64, path::PathBuf};
 use anyhow::{Context, Result};
 use clap::Parser;
 use derive_builder::Builder;
+use getset::{CopyGetters, Getters};
+use std::{num::NonZeroU64, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Parser)]
@@ -48,17 +49,33 @@ pub struct Args {
     verbose: u8,
 }
 
-#[derive(Builder, Clone, Debug, PartialEq, Eq)]
+#[derive(Builder, Clone, CopyGetters, Debug, Eq, Getters, PartialEq)]
 pub struct Settings {
+    #[getset(get_copy="pub")]
     num_trials: u64,
-    #[builder(default)] trial_settings: TrialSettings,
-    #[builder(default)] save_frequency: Option<NonZeroU64>,
-    #[builder(default="10000")] record_max: usize,
-    #[builder(default)] verbose: u8,
-    #[builder(default)] seed: Option<Seed>,
-    #[builder(default)] seed_index: Option<usize>,
-    #[builder(default="1")] threads: usize,
-    #[builder(default)] output: OutputTo,
+    #[builder(default)]
+    #[getset(get="pub")]
+    trial_settings: TrialSettings,
+    #[builder(default)]
+    save_frequency: Option<NonZeroU64>,
+    #[builder(default="10000")]
+    #[getset(get_copy="pub")]
+    record_max: usize,
+    #[builder(default)]
+    #[getset(get_copy="pub")]
+    verbose: u8,
+    #[builder(default)]
+    #[getset(get_copy="pub")]
+    seed: Option<Seed>,
+    #[builder(default)]
+    #[getset(get_copy="pub")]
+    seed_index: Option<usize>,
+    #[builder(default="1")]
+    #[getset(get_copy="pub")]
+    threads: usize,
+    #[builder(default)]
+    #[getset(get="pub")]
+    output: OutputTo,
 }
 
 impl Settings {
@@ -100,21 +117,6 @@ impl Settings {
     }
 
     #[inline]
-    pub fn num_trials(&self) -> u64 {
-        self.num_trials
-    }
-
-    #[inline]
-    pub fn set_num_trials(&mut self, count: u64) {
-        self.num_trials = count;
-    }
-
-    #[inline]
-    pub fn trial_settings(&self) -> &TrialSettings {
-        &self.trial_settings
-    }
-
-    #[inline]
     pub fn key_filter(&self) -> KeyFilter {
         self.trial_settings.key_filter()
     }
@@ -140,46 +142,19 @@ impl Settings {
     }
 
     #[inline]
-    pub fn record_max(&self) -> usize {
-        self.record_max
-    }
-
-    #[inline]
-    pub fn verbose(&self) -> u8 {
-        self.verbose
-    }
-
-    #[inline]
-    pub fn seed(&self) -> Option<Seed> {
-        self.seed
-    }
-
-    #[inline]
-    pub fn seed_index(&self) -> Option<usize> {
-        self.seed_index
-    }
-
-    #[inline]
     pub fn parallel(&self) -> bool {
         self.threads != 1
     }
-
-    #[inline]
-    pub fn threads(&self) -> usize {
-        self.threads
-    }
-
-    #[inline]
-    pub fn output(&self) -> &OutputTo {
-        &self.output
-    }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, CopyGetters, Debug, Default, PartialEq, Eq)]
 pub struct TrialSettings {
+    #[getset(get_copy="pub")]
     key_filter: KeyFilter,
     fixed_key: Option<Key>,
+    #[getset(get_copy="pub")]
     ncw_class: Option<NearCodewordClass>,
+    #[getset(get_copy="pub")]
     ncw_overlap: Option<usize>,
 }
 
@@ -207,23 +182,8 @@ impl TrialSettings {
     }
 
     #[inline]
-    pub fn key_filter(&self) -> KeyFilter {
-        self.key_filter
-    }
-
-    #[inline]
     pub fn fixed_key(&self) -> Option<&Key> {
         self.fixed_key.as_ref()
-    }
-
-    #[inline]
-    pub fn ncw_class(&self) -> Option<NearCodewordClass> {
-        self.ncw_class
-    }
-
-    #[inline]
-    pub fn ncw_overlap(&self) -> Option<usize> {
-        self.ncw_overlap
     }
 }
 

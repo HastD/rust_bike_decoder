@@ -355,10 +355,16 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
         right[..length].copy_from_slice(left);
     }
 
-    pub fn add_mod2(mut self, other: &Self) -> Self {
-        for i in 0..LENGTH {
-            self.0[i] ^= other.get(i);
-        }
+    #[inline]
+    pub fn xor_with<M>(&mut self, mask: M)
+        where M: IntoIterator<Item = bool>
+    {
+        self.0.iter_mut().zip(mask).for_each(|(bit, mask)| *bit ^= mask);
+    }
+
+    #[inline]
+    pub fn add_mod2(mut self, other: Self) -> Self {
+        self.xor_with(other.0);
         self
     }
 }

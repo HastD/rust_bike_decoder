@@ -39,11 +39,11 @@ pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
 }
 
 pub fn global_seed() -> Option<Seed> {
-    *GLOBAL_SEED.lock().expect("Should have acquired global seed lock")
+    *GLOBAL_SEED.lock().expect("GLOBAL_SEED should not be poisoned")
 }
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
-    let mut global_seed = GLOBAL_SEED.lock().expect("Should have acquired global seed lock");
+    let mut global_seed = GLOBAL_SEED.lock().expect("GLOBAL_SEED should not be poisoned");
     *global_seed.get_or_insert(seed.unwrap_or_else(Seed::from_entropy))
 }
 
@@ -175,7 +175,7 @@ mod tests {
     use super::*;
 
     fn overwrite_global_seed(seed: Option<Seed>) {
-        let mut global_seed = GLOBAL_SEED.lock().expect("Must be able to access global seed");
+        let mut global_seed = GLOBAL_SEED.lock().unwrap();
         *global_seed = seed;
     }
 

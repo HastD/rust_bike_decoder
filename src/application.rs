@@ -156,7 +156,7 @@ pub fn handle_progress(dfr: DecodingFailureRatio, data: &mut DataRecord,
     data.add_results(dfr);
     data.set_runtime(runtime);
     if settings.parallel() {
-        data.set_thread_count(global_thread_count());
+        data.set_thread_count(Some(global_thread_count()));
     }
     if settings.verbose() >= 2 {
         eprintln!("Found {} decoding failures in {} trials (runtime: {:.3} s)",

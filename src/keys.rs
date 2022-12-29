@@ -1,5 +1,6 @@
 use crate::parameters::*;
 use crate::vectors::{Index, InvalidSupport, SparseVector};
+use getset::Getters;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -7,7 +8,8 @@ use thiserror::Error;
 
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Eq, Getters, PartialEq, Serialize)]
+#[getset(get="pub")]
 pub struct Key {
     h0: CyclicBlock,
     h1: CyclicBlock,
@@ -27,16 +29,6 @@ impl Key {
             h0: CyclicBlock::from_support(h0_supp)?,
             h1: CyclicBlock::from_support(h1_supp)?,
         })
-    }
-
-    #[inline]
-    pub fn h0(&self) -> &CyclicBlock {
-        &self.h0
-    }
-
-    #[inline]
-    pub fn h1(&self) -> &CyclicBlock {
-        &self.h1
     }
 
     #[inline]

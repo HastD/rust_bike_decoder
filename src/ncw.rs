@@ -1,6 +1,7 @@
 use crate::parameters::*;
 use crate::vectors::{Index, SparseErrorVector};
 use crate::keys::Key;
+use getset::{CopyGetters, Getters};
 use rand::{Rng, seq::SliceRandom, distributions::{Distribution, Uniform}};
 use serde::{Serialize, Deserialize};
 use std::fmt;
@@ -44,26 +45,12 @@ impl clap::ValueEnum for NearCodewordClass {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, CopyGetters, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[getset(get_copy="pub")]
 pub struct NearCodewordSet {
     class: NearCodewordClass,
     l: usize,
     delta: usize
-}
-
-impl NearCodewordSet {
-    #[inline]
-    pub fn class(&self) -> &NearCodewordClass {
-        &self.class
-    }
-    #[inline]
-    pub fn l(&self) -> &usize {
-        &self.l
-    }
-    #[inline]
-    pub fn delta(&self) -> &usize {
-        &self.delta
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,23 +60,14 @@ pub enum ErrorVectorSource {
     Other,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Getters, Serialize, PartialEq, Eq, Deserialize)]
+#[getset(get="pub")]
 pub struct TaggedErrorVector {
     vector: SparseErrorVector,
     source: ErrorVectorSource
 }
 
 impl TaggedErrorVector {
-    #[inline]
-    pub fn vector(&self) -> &SparseErrorVector {
-        &self.vector
-    }
-
-    #[inline]
-    pub fn source(&self) -> &ErrorVectorSource {
-        &self.source
-    }
-
     #[inline]
     pub fn take_vector(self) -> (SparseErrorVector, ErrorVectorSource) {
         (self.vector, self.source)

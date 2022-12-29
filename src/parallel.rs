@@ -121,15 +121,17 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let (tx_progress, rx_progress) = channel();
     let settings_clone = settings.clone();
     // Start main trial loop in separate thread
-    rayon::spawn(move || {
+    let trial_thread = std::thread::spawn(move || -> Result<()> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(settings_clone.threads())
-            .build().expect("Rayon thread pool should be initialized");
-        trial_loop(&settings_clone, &tx_results, &tx_progress, pool)
-            .expect("tx_progress should not close prematurely");
+            .build()?;
+        trial_loop(&settings_clone, &tx_results, &tx_progress, pool)?;
+        Ok(())
     });
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
+    // Propagate any errors or panics from thread
+    trial_thread.join().unwrap_or_else(|err| std::panic::resume_unwind(err))?;
     if settings.verbose() >= 1 {
         eprintln!("{}", application::end_message(data.decoding_failure_ratio(),
             data.runtime()));

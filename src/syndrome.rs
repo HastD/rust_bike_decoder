@@ -115,7 +115,7 @@ impl Syndrome {
 impl Add for Syndrome {
     type Output = Self;
     fn add(self, other: Self) -> Self {
-        Self(self.0.add_mod2(&other.0))
+        Self(self.0.add_mod2(other.0))
     }
 }
 

@@ -6,12 +6,16 @@ use crate::{
     threshold::THRESHOLD_CACHE,
     vectors::ErrorVector,
 };
+use getset::{CopyGetters, Getters};
 use thiserror::Error;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, CopyGetters, Debug, Getters)]
 pub struct DecodingResult {
+    #[getset(get="pub")]
     key: Key,
+    #[getset(get="pub")]
     vector: TaggedErrorVector,
+    #[getset(get_copy="pub")]
     success: bool,
 }
 
@@ -27,27 +31,13 @@ impl DecodingResult {
     }
 
     #[inline]
-    pub fn key(&self) -> &Key {
-        &self.key
-    }
-
-    #[inline]
-    pub fn vector(&self) -> &TaggedErrorVector {
-        &self.vector
-    }
-
-    #[inline]
-    pub fn success(&self) -> bool {
-        self.success
-    }
-
-    #[inline]
     pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
         (self.key, self.vector)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
+#[getset(get="pub")]
 pub struct DecodingFailure {
     key: Key,
     vector: TaggedErrorVector,
@@ -78,16 +68,6 @@ impl TryFrom<DecodingResult> for DecodingFailure {
 }
 
 impl DecodingFailure {
-    #[inline]
-    pub fn key(&self) -> &Key {
-        &self.key
-    }
-
-    #[inline]
-    pub fn vector(&self) -> &TaggedErrorVector {
-        &self.vector
-    }
-
     #[inline]
     pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
         (self.key, self.vector)

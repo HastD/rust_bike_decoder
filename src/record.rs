@@ -6,16 +6,22 @@ use crate::{
     random::Seed,
     vectors::SparseErrorVector,
 };
-use std::{fmt, ops::AddAssign, time::Duration};
+use getset::{CopyGetters, Getters, Setters};
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize)]
 pub struct RecordedDecodingFailure {
+    #[getset(get="pub")]
     h0: CyclicBlock,
+    #[getset(get="pub")]
     h1: CyclicBlock,
+    #[getset(get="pub")]
     e_supp: SparseErrorVector,
+    #[getset(get_copy="pub")]
     e_source: ErrorVectorSource,
+    #[getset(get_copy="pub")]
     thread: usize,
 }
 
@@ -32,51 +38,40 @@ impl RecordedDecodingFailure {
             thread,
         }
     }
-
-    #[inline]
-    pub fn h0(&self) -> &CyclicBlock {
-        &self.h0
-    }
-
-    #[inline]
-    pub fn h1(&self) -> &CyclicBlock {
-        &self.h1
-    }
-
-    #[inline]
-    pub fn e_supp(&self) -> &SparseErrorVector {
-        &self.e_supp
-    }
-
-    #[inline]
-    pub fn e_source(&self) -> ErrorVectorSource {
-        self.e_source
-    }
-
-    #[inline]
-    pub fn thread(&self) -> usize {
-        self.thread
-    }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize, Setters)]
 pub struct DataRecord {
+    #[getset(get_copy="pub")]
     r: usize,
+    #[getset(get_copy="pub")]
     d: usize,
+    #[getset(get_copy="pub")]
     t: usize,
+    #[getset(get_copy="pub")]
     iterations: usize,
+    #[getset(get_copy="pub")]
     gray_threshold_diff: u8,
+    #[getset(get_copy="pub")]
     bf_threshold_min: u8,
+    #[getset(get_copy="pub")]
     bf_masked_threshold: u8,
+    #[getset(get_copy="pub")]
     key_filter: KeyFilter,
+    #[getset(get="pub")]
     fixed_key: Option<Key>,
+    #[getset(get="pub")]
     #[serde(flatten)]
     decoding_failure_ratio: DecodingFailureRatio,
+    #[getset(get="pub")]
     decoding_failures: Vec<RecordedDecodingFailure>,
+    #[getset(get_copy="pub")]
     seed: Seed,
+    #[getset(get_copy="pub", set="pub")]
     #[serde(serialize_with = "serialize_duration",
         deserialize_with = "deserialize_duration")]
     runtime: Duration,
+    #[getset(get_copy="pub", set="pub")]
     thread_count: Option<usize>,
 }
 
@@ -101,16 +96,6 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn seed(&self) -> Seed {
-        self.seed
-    }
-
-    #[inline]
-    pub fn decoding_failures(&self) -> &Vec<RecordedDecodingFailure> {
-        &self.decoding_failures
-    }
-
-    #[inline]
     pub fn push_decoding_failure(&mut self, df: RecordedDecodingFailure) {
         self.decoding_failures.push(df);
     }
@@ -126,33 +111,8 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn decoding_failure_ratio(&self) -> &DecodingFailureRatio {
-        &self.decoding_failure_ratio
-    }
-
-    #[inline]
     pub fn add_results(&mut self, dfr: DecodingFailureRatio) {
         self.decoding_failure_ratio += dfr;
-    }
-
-    #[inline]
-    pub fn runtime(&self) -> Duration {
-        self.runtime
-    }
-
-    #[inline]
-    pub fn set_runtime(&mut self, runtime: Duration) {
-        self.runtime = runtime;
-    }
-
-    #[inline]
-    pub fn thread_count(&self) -> Option<usize> {
-        self.thread_count
-    }
-
-    #[inline]
-    pub fn set_thread_count(&mut self, count: usize) {
-        self.thread_count = Some(count);
     }
 }
 
@@ -162,7 +122,8 @@ impl fmt::Display for DataRecord {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, CopyGetters, Debug, Default, Serialize, Deserialize)]
+#[getset(get_copy="pub")]
 pub struct DecodingFailureRatio {
     num_failures: u64,
     num_trials: u64,
@@ -183,16 +144,6 @@ impl DecodingFailureRatio {
         } else {
             Err(InvalidDFRError)
         }
-    }
-
-    #[inline]
-    pub fn num_failures(&self) -> u64 {
-        self.num_failures
-    }
-
-    #[inline]
-    pub fn num_trials(&self) -> u64 {
-        self.num_trials
     }
 
     #[inline]
