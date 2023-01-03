@@ -9,16 +9,17 @@ pub const BF_THRESHOLD_MIN: u8 = ((BLOCK_WEIGHT + 1) / 2) as u8;
 pub const BF_MASKED_THRESHOLD: u8 = ((BLOCK_WEIGHT + 1) / 2 + 1) as u8;
 
 // computed constants, don't change these
-pub const ROW_LENGTH: usize = 2*BLOCK_LENGTH;
-pub const ROW_WEIGHT: usize = 2*BLOCK_WEIGHT;
-pub const TANNER_GRAPH_EDGES: usize = ROW_WEIGHT*BLOCK_LENGTH;
+pub const ROW_LENGTH: usize = 2 * BLOCK_LENGTH;
+pub const ROW_WEIGHT: usize = 2 * BLOCK_WEIGHT;
+pub const TANNER_GRAPH_EDGES: usize = ROW_WEIGHT * BLOCK_LENGTH;
 // Padding of certain arrays for efficient use of 256-bit AVX2 registers
-pub const SIZE_AVX: usize = ((((BLOCK_LENGTH*8) + (256*16 - 1)) / (256 * 16)) * (256 * 16)) / 8;
+pub const SIZE_AVX: usize = ((BLOCK_LENGTH * 8) + (256 * 16 - 1)) / (256 * 16) * (256 * 16) / 8;
 
-#[allow(warnings)]
+#[allow(dead_code, clippy::all)]
 const fn compile_time_assertions() {
     const _: () = assert!(BLOCK_WEIGHT < BLOCK_LENGTH);
     const _: () = assert!(ERROR_WEIGHT < BLOCK_LENGTH);
     const _: () = assert!((BLOCK_WEIGHT + 1) / 2 + 1 <= u8::MAX as usize);
-    const _: () = assert!(SIZE_AVX > BLOCK_LENGTH);
+    const _: () = assert!(BLOCK_LENGTH < SIZE_AVX);
+    const _: () = assert!(2 * SIZE_AVX < usize::MAX);
 }

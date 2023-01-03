@@ -39,8 +39,8 @@ pub fn decoding_failure_trial<R>(settings: &TrialSettings, rng: &mut R) -> Optio
     decoding_trial(settings, rng).try_into().ok()
 }
 
-pub fn check_writable(output: &OutputTo) -> Result<()> {
-    if let OutputTo::File(path, overwrite) = output {
+pub fn check_writable(output: &OutputTo, overwrite: bool) -> Result<()> {
+    if let OutputTo::File(path) = output {
         if !overwrite
             && path.try_exists()
                 .context("Output file path should be accessible")?
@@ -70,7 +70,7 @@ fn write_fallback<T>(err: Error, data: &impl Serialize) -> Result<T> {
 pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
     let mut writer: Box<dyn Write> = match output {
         OutputTo::Stdout => Box::new(io::stdout()),
-        OutputTo::File(filename, _) => {
+        OutputTo::File(filename) => {
             let file = File::create(filename)
                 .or_else(|err| write_fallback(err.into(), data))
                 .context("Output file should be writable")?;
@@ -170,7 +170,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
     if settings.verbose() >= 1 {
         eprintln!("{}", start_message(settings));
     }
-    check_writable(settings.output())?;
+    check_writable(settings.output(), settings.overwrite())?;
     // Set PRNG seed used for generating data
     let seed = settings.seed().unwrap_or_else(Seed::from_entropy);
     // Initialize object storing data to be recorded

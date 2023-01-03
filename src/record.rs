@@ -7,7 +7,7 @@ use crate::{
     vectors::SparseErrorVector,
 };
 use getset::{CopyGetters, Getters, Setters};
-use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::{Error, Unexpected}, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
 
@@ -167,7 +167,9 @@ fn deserialize_duration<'de, D>(de: D) -> Result<Duration, D::Error>
     where D: Deserializer<'de>,
 {
     let secs_str = <&str>::deserialize(de)?;
-    let secs = secs_str.parse::<f64>().map_err(D::Error::custom)?;
+    let secs = secs_str.parse::<f64>()
+        .map_err(|_| D::Error::invalid_type(Unexpected::Str(secs_str),
+            &"a string containing a valid float literal"))?;
     Duration::try_from_secs_f64(secs).map_err(D::Error::custom)
 }
 

@@ -113,7 +113,8 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
         if std::arch::is_x86_feature_detected!("avx2") {
             #[inline]
             fn truncate_buffer(buf: [u8; 2*SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
-                (&buf[..BLOCK_LENGTH]).try_into().unwrap()
+                (&buf[..BLOCK_LENGTH]).try_into()
+                    .expect("Must ensure BLOCK_LENGTH <= SIZE_AVX")
             }
             let mut upc = [[0u8; 2*SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);
@@ -225,7 +226,9 @@ fn multiply_avx2(
                 let dense_slice = &dense[offset+32*k..offset+32*k+32];
                 buffer[k] = add_i8_m256i(
                     buffer[k],
-                    <[u8; 32]>::try_from(dense_slice).unwrap().into()
+                    <[u8; 32]>::try_from(dense_slice)
+                        .expect("Slice should have length 32")
+                        .into()
                 );
             }
         }

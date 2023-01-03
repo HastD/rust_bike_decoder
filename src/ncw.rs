@@ -126,8 +126,8 @@ impl TaggedErrorVector {
         let shift = rng.gen_range(0..r);
         shift_blockwise(&mut supp, shift, r);
         Self {
-            // Unwrap is safe because this function always produces valid vector support
-            vector: SparseErrorVector::from_support(supp).unwrap(),
+            vector: SparseErrorVector::from_support(supp)
+                .expect("near_codeword should always produce valid vector support"),
             source: ErrorVectorSource::NearCodeword(NearCodewordSet {
                 class,
                 l,

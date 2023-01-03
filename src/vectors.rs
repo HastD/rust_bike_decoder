@@ -114,9 +114,10 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Self(supp)
     }
 
-    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_weak_type1<R>(thresh: u8, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
+        let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
             return Self::random(rng);
         }
@@ -134,9 +135,10 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Self(supp)
     }
 
-    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_weak_type2<R>(thresh: u8, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
+        let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
             return Self::random(rng);
         }
@@ -174,9 +176,10 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         Self(supp)
     }
 
-    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> (Self, Self)
+    pub fn random_weak_type3<R>(thresh: u8, rng: &mut R) -> (Self, Self)
         where R: Rng + ?Sized
     {
+        let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
             return (Self::random(rng), Self::random(rng));
         }
@@ -225,27 +228,25 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         shifts
     }
 
-    pub fn max_shifted_product_weight_geq(&self, other: &Self, threshold: usize) -> bool {
+    pub fn max_shifted_product_weight_geq(&self, other: &Self, threshold: u8) -> bool {
         let shifts = self.relative_shifts(other);
         let mut shift_counts = [0; LENGTH];
-        for i in 0..WEIGHT {
-            for j in 0..WEIGHT {
-                let count = &mut shift_counts[shifts[i][j] as usize];
-                *count += 1;
-                if *count >= threshold {
-                    return true;
-                }
+        for shift in shifts.into_iter().flatten() {
+            let count = &mut shift_counts[shift as usize];
+            *count += 1;
+            if *count >= threshold {
+                return true;
             }
         }
         false
     }
 
-    pub fn shifts_above_threshold(&self, threshold: usize) -> bool {
+    pub fn shifts_above_threshold(&self, threshold: u8) -> bool {
         let length = self.length();
         let mut shift_counts = [0; LENGTH];
-        for i in 0..WEIGHT {
-            for j in i+1..WEIGHT {
-                let diff = self.get(j).abs_diff(self.get(i));
+        for (i, &self_i) in self.0.iter().enumerate() {
+            for &self_j in self.0[i+1..].iter() {
+                let diff = self_j.abs_diff(self_i);
                 let delta = diff.min(length - diff);
                 let count = &mut shift_counts[delta as usize];
                 *count += 1;
@@ -257,7 +258,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         false
     }
 
-    pub fn random_non_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_non_weak_type2<R>(thresh: u8, rng: &mut R) -> Self
         where R: Rng + ?Sized
     {
         loop {

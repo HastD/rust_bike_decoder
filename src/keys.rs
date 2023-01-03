@@ -37,16 +37,6 @@ impl Key {
     }
 
     #[inline]
-    pub fn h0_supp(&self) -> &[Index; BLOCK_WEIGHT] {
-        self.h0.support()
-    }
-
-    #[inline]
-    pub fn h1_supp(&self) -> &[Index; BLOCK_WEIGHT] {
-        self.h1.support()
-    }
-
-    #[inline]
     pub fn block_weight(&self) -> usize {
         self.h0.weight()
     }
@@ -87,19 +77,19 @@ impl Key {
         }
     }
 
-    pub fn is_weak_type1(&self, _threshold: usize) -> bool {
+    pub fn is_weak_type1(&self, _threshold: u8) -> bool {
         unimplemented!();
     }
 
-    pub fn is_weak_type2(&self, threshold: usize) -> bool {
+    pub fn is_weak_type2(&self, threshold: u8) -> bool {
         self.h0.shifts_above_threshold(threshold) || self.h1.shifts_above_threshold(threshold)
     }
 
-    pub fn is_weak_type3(&self, threshold: usize) -> bool {
+    pub fn is_weak_type3(&self, threshold: u8) -> bool {
         self.h0.max_shifted_product_weight_geq(&self.h1, threshold)
     }
 
-    pub fn is_weak(&self, threshold: usize) -> bool {
+    pub fn is_weak(&self, threshold: u8) -> bool {
         self.is_weak_type2(threshold) || self.is_weak_type3(threshold)
     }
 
@@ -123,7 +113,7 @@ impl Key {
         }
     }
 
-    pub fn random_non_weak<R>(threshold: usize, rng: &mut R) -> Self
+    pub fn random_non_weak<R>(threshold: u8, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {
@@ -136,7 +126,7 @@ impl Key {
         }
     }
 
-    pub fn random_weak_type1<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_weak_type1<R>(thresh: u8, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {
@@ -155,7 +145,7 @@ impl Key {
         }
     }
 
-    pub fn random_weak_type2<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_weak_type2<R>(thresh: u8, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {
@@ -174,7 +164,7 @@ impl Key {
         }
     }
 
-    pub fn random_weak_type3<R>(thresh: usize, rng: &mut R) -> Self
+    pub fn random_weak_type3<R>(thresh: u8, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {
@@ -201,15 +191,15 @@ pub enum WeakType {
 pub enum KeyFilter {
     #[default]
     Any,
-    NonWeak(usize),
-    Weak(WeakType, usize),
+    NonWeak(u8),
+    Weak(WeakType, u8),
 }
 
 impl KeyFilter {
-    pub fn new(filter: i8, threshold: usize) -> Result<Self, KeyFilterError> {
+    pub fn new(filter: i8, threshold: u8) -> Result<Self, KeyFilterError> {
         if filter != 0 && threshold < 2 {
             return Err(KeyFilterError::InvalidThreshold);
-        } else if threshold >= BLOCK_WEIGHT {
+        } else if threshold as usize >= BLOCK_WEIGHT {
             // Thresholds >= BLOCK_WEIGHT are tautological and impose no conditions
             return Ok(Self::Any);
         }

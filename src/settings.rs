@@ -18,9 +18,9 @@ pub struct Args {
     #[arg(short, long, default_value_t=0, value_parser=clap::value_parser!(i8).range(-1..=3),
         help="Weak key filter (-1: non-weak only; 0: no filter; 1-3: type 1-3 only)")]
     weak_keys: i8,
-    #[arg(short='T', long, default_value_t=3, value_parser=clap::value_parser!(u16).range(3..),
+    #[arg(short='T', long, default_value_t=3, value_parser=clap::value_parser!(u8).range(3..),
         requires="weak_keys", help="Weak key threshold")]
-    weak_key_threshold: u16,
+    weak_key_threshold: u8,
     #[arg(long, help="Always use the specified key (in JSON format)")]
     fixed_key: Option<String>,
     #[arg(short='S',long,help="Use error vectors from near-codeword set A_{t,l}(S)")]
@@ -76,6 +76,9 @@ pub struct Settings {
     #[builder(default)]
     #[getset(get="pub")]
     output: OutputTo,
+    #[builder(default)]
+    #[getset(get_copy="pub")]
+    overwrite: bool,
 }
 
 impl Settings {
@@ -86,7 +89,7 @@ impl Settings {
         let settings = Self {
             num_trials: args.number as u64,
             trial_settings: TrialSettings::new(
-                KeyFilter::new(args.weak_keys, args.weak_key_threshold.into())?,
+                KeyFilter::new(args.weak_keys, args.weak_key_threshold)?,
                 args.fixed_key.as_deref().map(serde_json::from_str).transpose()
                     .context("--fixed-key should be valid JSON representing a key")?
                     .map(Key::sorted),
@@ -110,8 +113,9 @@ impl Settings {
                 |threads| threads.clamp(1, Self::MAX_THREAD_COUNT)),
             output: args.output.map_or(
                 OutputTo::Stdout,
-                |path| OutputTo::File(path.into(), args.overwrite),
+                |path| OutputTo::File(path.into()),
             ),
+            overwrite: args.overwrite,
         };
         Ok(settings)
     }
@@ -191,14 +195,14 @@ impl TrialSettings {
 pub enum OutputTo {
     #[default]
     Stdout,
-    File(PathBuf, bool),
+    File(PathBuf),
     Void,
 }
 
 impl OutputTo {
     #[inline]
     pub fn is_file(&self) -> bool {
-        matches!(*self, Self::File(_, _))
+        matches!(*self, Self::File(_))
     }
 }
 
@@ -257,7 +261,8 @@ mod tests {
             167,55,136,13,251,19,98,12,82,87,166,15,250,170,230,207])));
         assert!(settings.seed_index().is_none());
         assert_eq!(settings.threads, Settings::MAX_THREAD_COUNT);
-        assert_eq!(settings.output, OutputTo::File(PathBuf::from("test/path/to/file.json"), true));
+        assert_eq!(settings.output, OutputTo::File(PathBuf::from("test/path/to/file.json")));
+        assert!(settings.overwrite);
         let settings2 = Settings::from_args(args2).unwrap();
         assert_eq!(settings2.save_frequency(), settings2.num_trials());
     }
@@ -278,6 +283,7 @@ mod tests {
             seed_index: None,
             threads: 1,
             output: OutputTo::Void,
+            overwrite: false,
         });
         assert_eq!(settings.save_frequency(), settings.num_trials());
     }

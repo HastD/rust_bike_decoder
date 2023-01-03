@@ -112,7 +112,7 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     if settings.verbose() >= 1 {
         eprintln!("{}", application::start_message(settings));
     }
-    application::check_writable(settings.output())?;
+    application::check_writable(settings.output(), settings.overwrite())?;
     // Set global PRNG seed used for generating data
     try_insert_global_seed(settings.seed())
         .context("Must be able to set global seed to user-specified seed")?;
