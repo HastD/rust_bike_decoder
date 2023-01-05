@@ -8,7 +8,10 @@ use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NearCodewordClass {
-    C, N, TwoN
+    C,
+    N,
+    #[serde(rename = "2N")]
+    TwoN
 }
 
 impl NearCodewordClass {
