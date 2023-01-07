@@ -4,7 +4,7 @@ use crate::{
     ncw::TaggedErrorVector,
     parameters::*,
     random::{Seed, current_thread_id, get_rng_from_seed, global_thread_count},
-    record::{DataRecord, RecordedDecodingFailure, DecodingFailureRatio},
+    record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings, OutputTo},
 };
 use std::{
@@ -137,7 +137,7 @@ pub(crate) fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> Stri
         runtime.as_secs_f64(), avg_text)
 }
 
-pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
+pub fn handle_decoding_failure(mut df: DecodingFailure, thread_id: usize,
         data: &mut DataRecord, settings: &Settings) {
     if data.decoding_failures().len() < settings.record_max() {
         if settings.verbose() >= 3 {
@@ -147,7 +147,8 @@ pub fn handle_decoding_failure(df: DecodingFailure, thread_id: usize,
                 eprintln!("Maximum number of decoding failures recorded.");
             }    
         }
-        data.push_decoding_failure(RecordedDecodingFailure::new(df, thread_id));
+        df.thread = Some(thread_id);
+        data.push_decoding_failure(df);
     }
 }
 

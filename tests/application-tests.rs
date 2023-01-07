@@ -25,9 +25,9 @@ fn main_single_threaded_test() {
     assert_eq!(data.seed(), seed);
     assert_eq!(data.num_failures(), 1);
     assert_eq!(data.decoding_failures().len(), 1);
-    let df = &data.decoding_failures()[0];
+    let (key, e_supp) = data.decoding_failures()[0].clone().take_key_vector();
     assert_eq!(
-        Key::new(df.h0().clone(), df.h1().clone()),
+        key,
         Key::from_support(
             [78, 107, 113, 195, 230, 231, 259, 265, 354, 383, 412, 430, 455, 501, 583],
             [8, 26, 62, 150, 204, 242, 265, 312, 324, 386, 437, 523, 535, 547, 566]
@@ -35,14 +35,14 @@ fn main_single_threaded_test() {
         .unwrap()
     );
     assert_eq!(
-        df.e_supp().clone(),
+        *e_supp.vector(),
         SparseErrorVector::from_support([
             138, 276, 406, 447, 489, 494, 523, 553, 562, 622, 630, 651, 692, 733, 735, 783, 951,
             1158
         ])
         .unwrap()
     );
-    assert_eq!(df.e_source(), ErrorVectorSource::Random);
+    assert_eq!(*e_supp.source(), ErrorVectorSource::Random);
 }
 
 #[test]

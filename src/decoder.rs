@@ -7,6 +7,7 @@ use crate::{
     vectors::ErrorVector,
 };
 use getset::{CopyGetters, Getters};
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 #[derive(Clone, CopyGetters, Debug, Getters)]
@@ -36,16 +37,20 @@ impl DecodingResult {
     }
 }
 
-#[derive(Clone, Debug, Getters)]
-#[getset(get="pub")]
+#[derive(Clone, Debug, Getters, Serialize, Deserialize)]
 pub struct DecodingFailure {
+    #[serde(flatten)]
+    #[getset(get = "pub")]
     key: Key,
+    #[serde(flatten)]
+    #[getset(get = "pub")]
     vector: TaggedErrorVector,
+    pub thread: Option<usize>,
 }
 
 impl From<DecodingFailure> for DecodingResult {
     fn from(df: DecodingFailure) -> Self {
-        let (key, vector) = df.take_key_vector();
+        let DecodingFailure { key, vector, .. } = df;
         Self {
             key,
             vector,
@@ -59,8 +64,12 @@ impl TryFrom<DecodingResult> for DecodingFailure {
 
     fn try_from(result: DecodingResult) -> Result<Self, NotFailureError> {
         if !result.success() {
-            let (key, vector) = result.take_key_vector();
-            Ok(Self { key, vector })
+            let DecodingResult { key, vector, .. } = result;
+            Ok(Self {
+                key: key.sorted(),
+                vector: vector.sorted(),
+                thread: None,
+            })
         } else {
             Err(NotFailureError)
         }

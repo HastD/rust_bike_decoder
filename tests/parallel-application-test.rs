@@ -36,12 +36,13 @@ fn main_multithreaded_test() {
         2,
         "decoding_failures().len() didn't match"
     );
-    decoding_failures.sort_by_key(|df| df.thread());
+    decoding_failures.sort_by_key(|df| df.thread);
     let df2 = decoding_failures.pop().unwrap();
     let df0 = decoding_failures.pop().unwrap();
-    assert_eq!(df0.thread(), 0);
+    assert_eq!(df0.thread, Some(0));
+    let (key0, e0_supp) = df0.take_key_vector();
     assert_eq!(
-        Key::new(df0.h0().clone(), df0.h1().clone()),
+        key0,
         Key::from_support(
             [54, 102, 112, 122, 165, 169, 199, 400, 468, 478, 496, 533, 563, 571, 581],
             [6, 16, 36, 95, 104, 181, 209, 229, 259, 317, 325, 363, 412, 549, 576]
@@ -49,17 +50,18 @@ fn main_multithreaded_test() {
         .unwrap()
     );
     assert_eq!(
-        df0.e_supp().clone(),
+        *e0_supp.vector(),
         SparseErrorVector::from_support([
             55, 129, 138, 196, 206, 399, 407, 451, 471, 486, 581, 646, 791, 840, 847, 1099, 1127,
             1165
         ])
         .unwrap()
     );
-    assert_eq!(df0.e_source(), ErrorVectorSource::Random);
-    assert_eq!(df2.thread(), 2);
+    assert_eq!(*e0_supp.source(), ErrorVectorSource::Random);
+    assert_eq!(df2.thread, Some(2));
+    let (key2, e2_supp) = df2.take_key_vector();
     assert_eq!(
-        Key::new(df2.h0().clone(), df2.h1().clone()),
+        key2,
         Key::from_support(
             [34, 87, 90, 134, 264, 273, 299, 338, 382, 390, 465, 512, 529, 547, 556],
             [61, 81, 193, 253, 267, 341, 358, 390, 394, 447, 458, 510, 557, 564, 579]
@@ -67,11 +69,11 @@ fn main_multithreaded_test() {
         .unwrap()
     );
     assert_eq!(
-        df2.e_supp().clone(),
+        *e2_supp.vector(),
         SparseErrorVector::from_support([
             12, 44, 59, 101, 109, 145, 150, 237, 284, 289, 672, 696, 741, 769, 799, 986, 1117, 1124
         ])
         .unwrap()
     );
-    assert_eq!(df2.e_source(), ErrorVectorSource::Random);
+    assert_eq!(*e2_supp.source(), ErrorVectorSource::Random);
 }

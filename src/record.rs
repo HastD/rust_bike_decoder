@@ -1,44 +1,13 @@
 use crate::{
     decoder::DecodingFailure,
-    keys::{CyclicBlock, Key, KeyFilter},
-    ncw::ErrorVectorSource,
+    keys::{Key, KeyFilter},
     parameters::*,
     random::Seed,
-    vectors::SparseErrorVector,
 };
 use getset::{CopyGetters, Getters, Setters};
 use serde::{de::{Error, Unexpected}, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
-
-#[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize)]
-pub struct RecordedDecodingFailure {
-    #[getset(get="pub")]
-    h0: CyclicBlock,
-    #[getset(get="pub")]
-    h1: CyclicBlock,
-    #[getset(get="pub")]
-    e_supp: SparseErrorVector,
-    #[getset(get_copy="pub")]
-    e_source: ErrorVectorSource,
-    #[getset(get_copy="pub")]
-    thread: usize,
-}
-
-impl RecordedDecodingFailure {
-    pub fn new(df: DecodingFailure, thread: usize) -> Self {
-        let (key, e) = df.take_key_vector();
-        let (h0, h1) = key.take_blocks();
-        let (e_supp, e_source) = e.take_vector();
-        Self {
-            h0: h0.sorted(),
-            h1: h1.sorted(),
-            e_supp: e_supp.sorted(),
-            e_source,
-            thread,
-        }
-    }
-}
 
 #[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize, Setters)]
 pub struct DataRecord {
@@ -64,7 +33,7 @@ pub struct DataRecord {
     #[serde(flatten)]
     decoding_failure_ratio: DecodingFailureRatio,
     #[getset(get="pub")]
-    decoding_failures: Vec<RecordedDecodingFailure>,
+    decoding_failures: Vec<DecodingFailure>,
     #[getset(get_copy="pub")]
     seed: Seed,
     #[getset(get_copy="pub", set="pub")]
@@ -96,7 +65,7 @@ impl DataRecord {
     }
 
     #[inline]
-    pub fn push_decoding_failure(&mut self, df: RecordedDecodingFailure) {
+    pub fn push_decoding_failure(&mut self, df: DecodingFailure) {
         self.decoding_failures.push(df);
     }
 

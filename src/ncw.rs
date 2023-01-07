@@ -56,24 +56,36 @@ pub struct NearCodewordSet {
     delta: usize
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorVectorSource {
     Random,
     NearCodeword(NearCodewordSet),
     Other,
+    #[default]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Getters, Serialize, PartialEq, Eq, Deserialize)]
 #[getset(get="pub")]
 pub struct TaggedErrorVector {
+    #[serde(rename = "e_supp")]
     vector: SparseErrorVector,
-    source: ErrorVectorSource
+    #[serde(default, rename = "e_source")]
+    source: ErrorVectorSource,
 }
 
 impl TaggedErrorVector {
     #[inline]
     pub fn take_vector(self) -> (SparseErrorVector, ErrorVectorSource) {
         (self.vector, self.source)
+    }
+
+    #[inline]
+    pub fn sorted(self) -> Self {
+        Self {
+            vector: self.vector.sorted(),
+            source: self.source,
+        }
     }
 
     #[inline]
