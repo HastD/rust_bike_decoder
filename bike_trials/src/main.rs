@@ -1,16 +1,7 @@
-pub mod application;
-pub mod decoder;
-//pub mod graphs;
-pub mod keys;
-pub mod ncw;
-pub mod parallel;
-pub mod parameters;
-pub mod random;
-pub mod record;
-pub mod settings;
-pub mod syndrome;
-pub mod threshold;
-pub mod vectors;
+mod application;
+mod parallel;
+mod record;
+mod settings;
 
 use crate::record::DataRecord;
 use crate::settings::{Args, Settings};

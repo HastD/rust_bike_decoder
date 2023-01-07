@@ -1,10 +1,12 @@
 use bike_decoder::{
     keys::Key,
     ncw::ErrorVectorSource,
-    parallel,
     random::{self, Seed},
-    settings::{OutputTo, Settings, SettingsBuilder},
     vectors::SparseErrorVector,
+};
+use bike_trials::{
+    parallel,
+    settings::{OutputTo, Settings, SettingsBuilder},
 };
 
 fn multithreaded_example_settings() -> Settings {

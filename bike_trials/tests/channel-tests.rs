@@ -1,9 +1,6 @@
-use bike_decoder::{
-    keys::KeyFilter,
-    ncw::NearCodewordClass,
+use bike_decoder::{keys::KeyFilter, ncw::NearCodewordClass, parameters::*, random};
+use bike_trials::{
     parallel,
-    parameters::*,
-    random,
     settings::{SettingsBuilder, TrialSettings},
 };
 use crossbeam_channel::unbounded as channel;

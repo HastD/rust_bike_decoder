@@ -1,10 +1,12 @@
 use crate::{
     application,
+    record::{DataRecord, DecodingFailureRatio},
+    settings::{Settings, TrialSettings},
+};
+use bike_decoder::{
     decoder::DecodingFailure,
     random::{get_or_insert_global_seed, try_insert_global_seed, current_thread_id,
         custom_thread_rng},
-    record::{DataRecord, DecodingFailureRatio},
-    settings::{Settings, TrialSettings},
 };
 use std::time::{Duration, Instant};
 use anyhow::{Context, Result};

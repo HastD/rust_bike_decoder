@@ -1,4 +1,4 @@
-use crate::{
+use bike_decoder::{
     decoder::DecodingFailure,
     keys::{Key, KeyFilter},
     parameters::*,

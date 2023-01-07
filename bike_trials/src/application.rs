@@ -1,11 +1,13 @@
 use crate::{
+    record::{DataRecord, DecodingFailureRatio},
+    settings::{Settings, TrialSettings, OutputTo},
+};
+use bike_decoder::{
     decoder::{DecodingResult, DecodingFailure},
     keys::{Key, KeyFilter},
     ncw::TaggedErrorVector,
     parameters::*,
     random::{Seed, current_thread_id, get_rng_from_seed, global_thread_count},
-    record::{DataRecord, DecodingFailureRatio},
-    settings::{Settings, TrialSettings, OutputTo},
 };
 use std::{
     fs::{self, File},

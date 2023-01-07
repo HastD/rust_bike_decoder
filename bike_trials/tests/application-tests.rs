@@ -1,11 +1,12 @@
 use bike_decoder::{
-    application,
     keys::Key,
     ncw::ErrorVectorSource,
-    parallel,
     random::{self, Seed},
-    settings::{OutputTo, SettingsBuilder},
     vectors::SparseErrorVector,
+};
+use bike_trials::{
+    application, parallel,
+    settings::{OutputTo, SettingsBuilder},
 };
 
 #[test]
