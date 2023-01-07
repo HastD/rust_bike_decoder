@@ -1,9 +1,13 @@
+use crate::keys::Key;
 use crate::parameters::*;
 use crate::vectors::{Index, SparseErrorVector};
-use crate::keys::Key;
 use getset::{CopyGetters, Getters};
-use rand::{Rng, seq::SliceRandom, distributions::{Distribution, Uniform}};
-use serde::{Serialize, Deserialize};
+use rand::{
+    distributions::{Distribution, Uniform},
+    seq::SliceRandom,
+    Rng,
+};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -11,7 +15,7 @@ pub enum NearCodewordClass {
     C,
     N,
     #[serde(rename = "2N")]
-    TwoN
+    TwoN,
 }
 
 impl NearCodewordClass {
@@ -49,11 +53,11 @@ impl clap::ValueEnum for NearCodewordClass {
 }
 
 #[derive(Copy, Clone, CopyGetters, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[getset(get_copy="pub")]
+#[getset(get_copy = "pub")]
 pub struct NearCodewordSet {
     class: NearCodewordClass,
     l: usize,
-    delta: usize
+    delta: usize,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,7 +70,7 @@ pub enum ErrorVectorSource {
 }
 
 #[derive(Clone, Debug, Getters, Serialize, PartialEq, Eq, Deserialize)]
-#[getset(get="pub")]
+#[getset(get = "pub")]
 pub struct TaggedErrorVector {
     #[serde(rename = "e_supp")]
     vector: SparseErrorVector,
@@ -98,7 +102,8 @@ impl TaggedErrorVector {
 
     #[inline]
     pub fn random<R>(rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         Self {
             vector: SparseErrorVector::random(rng),
@@ -106,22 +111,25 @@ impl TaggedErrorVector {
         }
     }
 
-    pub fn near_codeword<R>(key: &Key, class: NearCodewordClass, l: usize, rng: &mut R)
-        -> TaggedErrorVector
-        where R: Rng + ?Sized
+    pub fn near_codeword<R>(
+        key: &Key,
+        class: NearCodewordClass,
+        l: usize,
+        rng: &mut R,
+    ) -> TaggedErrorVector
+    where
+        R: Rng + ?Sized,
     {
         let r = BLOCK_LENGTH as Index;
         let sample = match class {
             NearCodewordClass::C => sample_c(key),
             NearCodewordClass::N => sample_n(key, rng.gen_range(0..2)),
-            NearCodewordClass::TwoN => {
-                loop {
-                    let sample = sample_2n(key, rng.gen_range(0..r), rng.gen_range(0..4));
-                    if sample.len() >= l {
-                        break sample;
-                    }
+            NearCodewordClass::TwoN => loop {
+                let sample = sample_2n(key, rng.gen_range(0..r), rng.gen_range(0..4));
+                if sample.len() >= l {
+                    break sample;
                 }
-            }
+            },
         };
         assert!(sample.len() >= l);
         let mut supp = [0 as Index; ERROR_WEIGHT];
@@ -146,8 +154,8 @@ impl TaggedErrorVector {
             source: ErrorVectorSource::NearCodeword(NearCodewordSet {
                 class,
                 l,
-                delta: sample.len() + ERROR_WEIGHT - 2*l,
-            })
+                delta: sample.len() + ERROR_WEIGHT - 2 * l,
+            }),
         }
     }
 }
@@ -155,31 +163,40 @@ impl TaggedErrorVector {
 impl fmt::Display for TaggedErrorVector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.source() {
-            ErrorVectorSource::NearCodeword(source) => write!(f, "{} [element of A_{{t,{}}}({})]",
-                self.vector(), source.l(), source.class()),
+            ErrorVectorSource::NearCodeword(source) => write!(
+                f,
+                "{} [element of A_{{t,{}}}({})]",
+                self.vector(),
+                source.l(),
+                source.class()
+            ),
             _ => write!(f, "{}", self.vector()),
-            }
+        }
     }
 }
 
-
 fn sample_c(key: &Key) -> Vec<Index> {
-    key.h0().support().iter().map(|idx| *idx + BLOCK_LENGTH as Index)
+    key.h0()
+        .support()
+        .iter()
+        .map(|idx| *idx + BLOCK_LENGTH as Index)
         .chain(key.h1().support().iter().copied())
         .collect()
 }
 
-fn sample_n(key: &Key, block_flag: u8) -> Vec<Index>
-{
+fn sample_n(key: &Key, block_flag: u8) -> Vec<Index> {
     if block_flag % 2 == 0 {
         key.h0().support().to_vec()
     } else {
-        key.h1().support().iter().map(|idx| *idx + BLOCK_LENGTH as Index).collect()
+        key.h1()
+            .support()
+            .iter()
+            .map(|idx| *idx + BLOCK_LENGTH as Index)
+            .collect()
     }
 }
 
-fn sample_2n(key: &Key, shift: Index, block_flag: u8) -> Vec<Index>
-{
+fn sample_2n(key: &Key, shift: Index, block_flag: u8) -> Vec<Index> {
     let mut sum_n = sample_n(key, block_flag % 2);
     let mut supp2 = sample_n(key, (block_flag >> 1) % 2);
     shift_blockwise(&mut supp2, shift, BLOCK_LENGTH as Index);

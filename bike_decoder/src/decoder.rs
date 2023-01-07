@@ -1,22 +1,18 @@
 use crate::{
-    keys::Key,
-    ncw::TaggedErrorVector,
-    parameters::*,
-    syndrome::Syndrome,
-    threshold::THRESHOLD_CACHE,
-    vectors::ErrorVector,
+    keys::Key, ncw::TaggedErrorVector, parameters::*, syndrome::Syndrome,
+    threshold::THRESHOLD_CACHE, vectors::ErrorVector,
 };
 use getset::{CopyGetters, Getters};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Clone, CopyGetters, Debug, Getters)]
 pub struct DecodingResult {
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     key: Key,
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     vector: TaggedErrorVector,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     success: bool,
 }
 
@@ -28,7 +24,11 @@ impl DecodingResult {
         let (e_out, same_syndrome) = bgf_decoder(&key, &mut syn);
         let success = e_in == e_out;
         assert!(same_syndrome || !success);
-        Self { key, vector, success }
+        Self {
+            key,
+            vector,
+            success,
+        }
     }
 
     #[inline]
@@ -121,11 +121,12 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     {
         if std::arch::is_x86_feature_detected!("avx2") {
             #[inline]
-            fn truncate_buffer(buf: [u8; 2*SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
-                (&buf[..BLOCK_LENGTH]).try_into()
+            fn truncate_buffer(buf: [u8; 2 * SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
+                (&buf[..BLOCK_LENGTH])
+                    .try_into()
                     .expect("Must ensure BLOCK_LENGTH <= SIZE_AVX")
             }
-            let mut upc = [[0u8; 2*SIZE_AVX]; 2];
+            let mut upc = [[0u8; 2 * SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);
             multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), SIZE_AVX);
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
@@ -149,18 +150,26 @@ pub fn bf_iter(
     key: &Key,
     s: &mut Syndrome,
     e_out: &mut ErrorVector,
-    thr: u8
+    thr: u8,
 ) -> ([Vec<usize>; 2], [Vec<usize>; 2]) {
     let upc = unsatisfied_parity_checks(key, s);
     let gray_thr = thr - GRAY_THRESHOLD_DIFF;
-    let mut black = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
-    let mut gray = [Vec::with_capacity(BLOCK_LENGTH), Vec::with_capacity(BLOCK_LENGTH)];
+    let mut black = [
+        Vec::with_capacity(BLOCK_LENGTH),
+        Vec::with_capacity(BLOCK_LENGTH),
+    ];
+    let mut gray = [
+        Vec::with_capacity(BLOCK_LENGTH),
+        Vec::with_capacity(BLOCK_LENGTH),
+    ];
     for (k, upc_k) in upc.iter().enumerate() {
-        for (i, upc_ki) in upc_k.iter().enumerate()
+        for (i, upc_ki) in upc_k
+            .iter()
+            .enumerate()
             .filter(|&(_, upc_ki)| *upc_ki >= gray_thr)
         {
             if *upc_ki >= thr {
-                e_out.flip(i + k*BLOCK_LENGTH);
+                e_out.flip(i + k * BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
                 black[k].push(i);
             } else {
@@ -172,18 +181,15 @@ pub fn bf_iter(
 }
 
 #[inline(never)]
-pub fn bf_iter_no_mask(
-    key: &Key,
-    s: &mut Syndrome,
-    e_out: &mut ErrorVector,
-    thr: u8
-) {
+pub fn bf_iter_no_mask(key: &Key, s: &mut Syndrome, e_out: &mut ErrorVector, thr: u8) {
     let upc = unsatisfied_parity_checks(key, s);
     for (k, upc_k) in upc.iter().enumerate() {
-        for (i, _) in upc_k.iter().enumerate()
+        for (i, _) in upc_k
+            .iter()
+            .enumerate()
             .filter(|&(_, upc_ki)| *upc_ki >= thr)
         {
-            e_out.flip(i + k*BLOCK_LENGTH);
+            e_out.flip(i + k * BLOCK_LENGTH);
             s.recompute_flipped_bit(key, k, i);
         }
     }
@@ -194,13 +200,13 @@ pub fn bf_masked_iter(
     s: &mut Syndrome,
     e_out: &mut ErrorVector,
     mask: [Vec<usize>; 2],
-    thr: u8
+    thr: u8,
 ) {
     let upc = unsatisfied_parity_checks(key, s);
     for k in 0..2 {
         for &i in mask[k].iter() {
             if upc[k][i] >= thr {
-                e_out.flip(i + k*BLOCK_LENGTH);
+                e_out.flip(i + k * BLOCK_LENGTH);
                 s.recompute_flipped_bit(key, k, i);
             }
         }
@@ -215,35 +221,30 @@ pub fn bf_masked_iter(
     any(target_arch = "x86", target_arch = "x86_64"),
     target_feature = "avx2"
 ))]
-fn multiply_avx2(
-    output: &mut [u8],
-    sparse: &[u32],
-    dense: &[bool],
-    block_length: usize
-) {
-    use safe_arch::{zeroed_m256i, add_i8_m256i};
+fn multiply_avx2(output: &mut [u8], sparse: &[u32], dense: &[bool], block_length: usize) {
+    use safe_arch::{add_i8_m256i, zeroed_m256i};
     const AVX_BUFF_LEN: usize = 8;
     let dense = bytemuck::cast_slice::<bool, u8>(dense);
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
-    for i in (0 .. block_length / 32).step_by(AVX_BUFF_LEN) {
+    for i in (0..block_length / 32).step_by(AVX_BUFF_LEN) {
         // reset buffer to zero
         buffer.iter_mut().for_each(|x| *x = zeroed_m256i());
-        for offset in sparse.iter().map(|idx| *idx as usize + 32*i) {
+        for offset in sparse.iter().map(|idx| *idx as usize + 32 * i) {
             for k in 0..AVX_BUFF_LEN {
                 // add offset block of dense vector to buffer
-                let dense_slice = &dense[offset+32*k..offset+32*k+32];
+                let dense_slice = &dense[offset + 32 * k..offset + 32 * k + 32];
                 buffer[k] = add_i8_m256i(
                     buffer[k],
                     <[u8; 32]>::try_from(dense_slice)
                         .expect("Slice should have length 32")
-                        .into()
+                        .into(),
                 );
             }
         }
         for k in 0..AVX_BUFF_LEN {
             // copy buffer contents to appropriate address in output vector
-            let output_slice = &mut output[32*(i+k)..32*(i+k)+32];
+            let output_slice = &mut output[32 * (i + k)..32 * (i + k) + 32];
             output_slice.copy_from_slice(&<[u8; 32]>::from(buffer[k]));
         }
     }

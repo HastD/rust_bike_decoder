@@ -39,11 +39,15 @@ pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
 }
 
 pub fn global_seed() -> Option<Seed> {
-    *GLOBAL_SEED.lock().expect("GLOBAL_SEED should not be poisoned")
+    *GLOBAL_SEED
+        .lock()
+        .expect("GLOBAL_SEED should not be poisoned")
 }
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
-    let mut global_seed = GLOBAL_SEED.lock().expect("GLOBAL_SEED should not be poisoned");
+    let mut global_seed = GLOBAL_SEED
+        .lock()
+        .expect("GLOBAL_SEED should not be poisoned");
     *global_seed.get_or_insert(seed.unwrap_or_else(Seed::from_entropy))
 }
 
@@ -185,7 +189,9 @@ mod tests {
         let (y, other_thread_id) = std::thread::spawn(|| {
             let mut rng = custom_thread_rng();
             (rng.next_u64(), current_thread_id())
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         assert_eq!(current_thread_id() + 1, other_thread_id);
         assert_eq!(x, y);
         assert_eq!(global_thread_count(), 2);

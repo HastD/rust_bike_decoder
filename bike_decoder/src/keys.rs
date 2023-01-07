@@ -9,7 +9,7 @@ use thiserror::Error;
 pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
 #[derive(Clone, Debug, Deserialize, Eq, Getters, PartialEq, Serialize)]
-#[getset(get="pub")]
+#[getset(get = "pub")]
 pub struct Key {
     h0: CyclicBlock,
     h1: CyclicBlock,

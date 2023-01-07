@@ -1,6 +1,9 @@
 use crate::parameters::*;
-use rand::{Rng, distributions::{Distribution, Uniform}};
-use serde::{Serialize, Serializer, Deserialize};
+use rand::{
+    distributions::{Distribution, Uniform},
+    Rng,
+};
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 use thiserror::Error;
 
@@ -20,8 +23,7 @@ pub enum InvalidSupport {
 // Sparse vector of fixed weight and length over GF(2)
 #[derive(Debug, Clone, Deserialize)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
-    #[serde(with = "serde_arrays")]
-    [Index; WEIGHT]
+    #[serde(with = "serde_arrays")] [Index; WEIGHT],
 );
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
@@ -39,7 +41,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
             }
         }
         for i in 0..WEIGHT {
-            for j in (i+1)..WEIGHT {
+            for j in (i + 1)..WEIGHT {
                 if self.get(i) == self.get(j) {
                     return Err(InvalidSupport::RepeatedIndex);
                 }
@@ -85,7 +87,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     }
 
     pub fn random<R>(rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let mut supp = [0 as Index; WEIGHT];
         let mut ctr = 0;
@@ -107,7 +110,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let mut supp = [0 as Index; WEIGHT];
         for i in 0..WEIGHT {
             // Randomly generate element in the appropriate range
-            let rand = rng.gen_range(0..LENGTH-i);
+            let rand = rng.gen_range(0..LENGTH - i);
             // Insert in sorted order
             insert_sorted_inc(&mut supp, rand as Index, i);
         }
@@ -115,28 +118,30 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     }
 
     pub fn random_weak_type1<R>(thresh: u8, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
             return Self::random(rng);
         }
         let r = LENGTH as Index;
-        let delta = rng.gen_range(1..=r/2);
+        let delta = rng.gen_range(1..=r / 2);
         let shift = rng.gen_range(0..r);
         let mut supp = [0 as Index; WEIGHT];
         for j in 0..=thresh {
             insert_sorted_noinc(&mut supp, (delta * (shift + j as Index)) % r, j);
         }
-        for j in thresh+1 .. WEIGHT {
-            let rand = rng.gen_range(0..r-j as Index);
+        for j in thresh + 1..WEIGHT {
+            let rand = rng.gen_range(0..r - j as Index);
             insert_sorted_inc(&mut supp, rand, j);
         }
         Self(supp)
     }
 
     pub fn random_weak_type2<R>(thresh: u8, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
@@ -148,8 +153,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let mut z = [0 as Index; WEIGHT];
         for j in 1..s {
             // Randomly generate elements in the appropriate ranges
-            let rand_o = rng.gen_range(0..d-j as Index);
-            let rand_z = rng.gen_range(0..r-d-j as Index);
+            let rand_o = rng.gen_range(0..d - j as Index);
+            let rand_z = rng.gen_range(0..r - d - j as Index);
             // Insert in sorted order
             insert_sorted_inc(&mut o, rand_o, j);
             insert_sorted_inc(&mut z, rand_z, j);
@@ -157,11 +162,11 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         o[s] = d;
         z[s] = r - d;
         for j in 0..s {
-            o[j] = o[j+1] - o[j];
-            z[j] = z[j+1] - z[j];
+            o[j] = o[j + 1] - o[j];
+            z[j] = z[j + 1] - z[j];
         }
-        let delta = rng.gen_range(1..=r/2);
-        let shift = rng.gen_range(0..z[0]+o[0]);
+        let delta = rng.gen_range(1..=r / 2);
+        let shift = rng.gen_range(0..z[0] + o[0]);
         let mut supp = [0 as Index; WEIGHT];
         let mut idx = 0;
         let mut pos = r - shift;
@@ -177,7 +182,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     }
 
     pub fn random_weak_type3<R>(thresh: u8, rng: &mut R) -> (Self, Self)
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         let thresh = usize::from(thresh);
         if thresh >= WEIGHT {
@@ -189,15 +195,15 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let mut h1 = [0 as Index; WEIGHT];
         // Generate entries that overlap after a shift
         for j in 0..thresh {
-            let rand = rng.gen_range(0..r-j as Index);
+            let rand = rng.gen_range(0..r - j as Index);
             let value = insert_sorted_inc(&mut h0, rand, j);
             insert_sorted_noinc(&mut h1, (value + shift) % r, j);
         }
         // Generate other entries
         for j in thresh..WEIGHT {
-            let rand = rng.gen_range(0..r-j as Index);
+            let rand = rng.gen_range(0..r - j as Index);
             insert_sorted_inc(&mut h0, rand, j);
-            let rand = rng.gen_range(0..r-j as Index);
+            let rand = rng.gen_range(0..r - j as Index);
             insert_sorted_inc(&mut h1, rand, j);
         }
         (Self(h0), Self(h1))
@@ -221,8 +227,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
                     length_plus_self_i - other_j
                 } else {
                     self_i - other_j
-                };  // this equals (self_i - other_j) % length
-                    // since 0 <= self_i, other_j < N.
+                }; // this equals (self_i - other_j) % length
+                   // since 0 <= self_i, other_j < N.
             }
         }
         shifts
@@ -245,7 +251,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
         let length = self.length();
         let mut shift_counts = [0; LENGTH];
         for (i, &self_i) in self.0.iter().enumerate() {
-            for &self_j in self.0[i+1..].iter() {
+            for &self_j in self.0[i + 1..].iter() {
                 let diff = self_j.abs_diff(self_i);
                 let delta = diff.min(length - diff);
                 let count = &mut shift_counts[delta as usize];
@@ -259,7 +265,8 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     }
 
     pub fn random_non_weak_type2<R>(thresh: u8, rng: &mut R) -> Self
-        where R: Rng + ?Sized
+    where
+        R: Rng + ?Sized,
     {
         loop {
             let block = Self::random(rng);
@@ -272,8 +279,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 
 // Sort support lists before serializing
 impl<const W: usize, const L: usize> Serialize for SparseVector<W, L> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.clone().sorted().0.serialize(serializer)
     }
 }
@@ -285,13 +291,16 @@ impl<const W: usize, const L: usize> PartialEq for SparseVector<W, L> {
     }
 }
 
-impl<const W: usize, const L: usize> Eq for SparseVector<W, L> { }
+impl<const W: usize, const L: usize> Eq for SparseVector<W, L> {}
 
 impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let str_supp = self.support().iter()
+        let str_supp = self
+            .support()
+            .iter()
             .map(|idx| idx.to_string())
-            .collect::<Vec<_>>().join(", ");
+            .collect::<Vec<_>>()
+            .join(", ");
         write!(f, "[{}]", str_supp)
     }
 }
@@ -346,7 +355,9 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     }
 
     pub fn support(&self) -> Vec<Index> {
-        self.0.iter().enumerate()
+        self.0
+            .iter()
+            .enumerate()
             .filter_map(|(idx, bit)| bit.then_some(idx as Index))
             .collect()
     }
@@ -358,9 +369,13 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
 
     #[inline]
     pub fn xor_with<M>(&mut self, mask: M)
-        where M: IntoIterator<Item = bool>
+    where
+        M: IntoIterator<Item = bool>,
     {
-        self.0.iter_mut().zip(mask).for_each(|(bit, mask)| *bit ^= mask);
+        self.0
+            .iter_mut()
+            .zip(mask)
+            .for_each(|(bit, mask)| *bit ^= mask);
     }
 
     #[inline]
@@ -439,10 +454,12 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
-                ::random_weak_type1(thresh, &mut rng);
-            assert!(v.shifts_above_threshold(thresh),
-                "Type 1 weak block was not actually weak of type 1/2: {:?}", v);
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type1(thresh, &mut rng);
+            assert!(
+                v.shifts_above_threshold(thresh),
+                "Type 1 weak block was not actually weak of type 1/2: {:?}",
+                v
+            );
         }
     }
 
@@ -451,10 +468,12 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
-                ::random_weak_type2(thresh, &mut rng);
-            assert!(v.shifts_above_threshold(thresh),
-                "Type 2 weak block was not actually weak of type 1/2: {:?}", v);
+            let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type2(thresh, &mut rng);
+            assert!(
+                v.shifts_above_threshold(thresh),
+                "Type 2 weak block was not actually weak of type 1/2: {:?}",
+                v
+            );
         }
     }
 
@@ -463,10 +482,13 @@ mod tests {
         let mut rng = rand::thread_rng();
         let thresh = 5;
         for _ in 0..TRIALS {
-            let (v1, v2) = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>
-                ::random_weak_type3(thresh, &mut rng);
-            assert!(v1.max_shifted_product_weight_geq(&v2, thresh),
-                "Pair of type 3 weak blocks was not actually weak of type 3: {:?}", (v1, v2));
+            let (v1, v2) =
+                SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type3(thresh, &mut rng);
+            assert!(
+                v1.max_shifted_product_weight_geq(&v2, thresh),
+                "Pair of type 3 weak blocks was not actually weak of type 3: {:?}",
+                (v1, v2)
+            );
         }
     }
 }

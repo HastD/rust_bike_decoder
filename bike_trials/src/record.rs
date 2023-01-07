@@ -5,42 +5,47 @@ use bike_decoder::{
     random::Seed,
 };
 use getset::{CopyGetters, Getters, Setters};
-use serde::{de::{Error, Unexpected}, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{Error, Unexpected},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
 
 #[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize, Setters)]
 pub struct DataRecord {
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     r: usize,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     d: usize,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     t: usize,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     iterations: usize,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     gray_threshold_diff: u8,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     bf_threshold_min: u8,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     bf_masked_threshold: u8,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     key_filter: KeyFilter,
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     fixed_key: Option<Key>,
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     #[serde(flatten)]
     decoding_failure_ratio: DecodingFailureRatio,
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     decoding_failures: Vec<DecodingFailure>,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     seed: Seed,
-    #[getset(get_copy="pub", set="pub")]
-    #[serde(serialize_with = "serialize_duration",
-        deserialize_with = "deserialize_duration")]
+    #[getset(get_copy = "pub", set = "pub")]
+    #[serde(
+        serialize_with = "serialize_duration",
+        deserialize_with = "deserialize_duration"
+    )]
     runtime: Duration,
-    #[getset(get_copy="pub", set="pub")]
+    #[getset(get_copy = "pub", set = "pub")]
     thread_count: Option<usize>,
 }
 
@@ -92,7 +97,7 @@ impl fmt::Display for DataRecord {
 }
 
 #[derive(Clone, CopyGetters, Debug, Default, Serialize, Deserialize)]
-#[getset(get_copy="pub")]
+#[getset(get_copy = "pub")]
 pub struct DecodingFailureRatio {
     num_failures: u64,
     num_trials: u64,
@@ -109,7 +114,10 @@ impl DecodingFailureRatio {
     #[inline]
     pub fn new(num_failures: u64, num_trials: u64) -> Result<Self, InvalidDFRError> {
         if num_failures <= num_trials {
-            Ok(Self { num_failures, num_trials })
+            Ok(Self {
+                num_failures,
+                num_trials,
+            })
         } else {
             Err(InvalidDFRError)
         }
@@ -126,19 +134,24 @@ impl DecodingFailureRatio {
 pub struct InvalidDFRError;
 
 fn serialize_duration<S>(duration: &Duration, ser: S) -> Result<S::Ok, S::Error>
-    where S: Serializer,
+where
+    S: Serializer,
 {
     let secs_str = format!("{}.{:09}", duration.as_secs(), duration.subsec_nanos());
     ser.serialize_str(&secs_str)
 }
 
 fn deserialize_duration<'de, D>(de: D) -> Result<Duration, D::Error>
-    where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let secs_str = String::deserialize(de)?;
-    let secs = secs_str.parse::<f64>()
-        .map_err(|_| D::Error::invalid_type(Unexpected::Str(&secs_str),
-            &"a string containing a valid float literal"))?;
+    let secs = secs_str.parse::<f64>().map_err(|_| {
+        D::Error::invalid_type(
+            Unexpected::Str(&secs_str),
+            &"a string containing a valid float literal",
+        )
+    })?;
     Duration::try_from_secs_f64(secs).map_err(D::Error::custom)
 }
 
@@ -154,7 +167,9 @@ mod tests {
         555],"h1":[10,41,50,59,62,119,153,164,179,208,284,384,438,513,554],"e_supp":[42,187,189,
         336,409,445,464,485,524,532,617,804,877,892,1085,1099,1117,1150],"e_source":"Random",
         "thread":2}],"seed":"52e19bb7d8474289f86caee35a11ac16dd09902d84fa01173ad83d7b1c376109",
-        "runtime":"1.478772912","thread_count":8}"#.split_whitespace().collect()
+        "runtime":"1.478772912","thread_count":8}"#
+            .split_whitespace()
+            .collect()
     }
 
     #[test]

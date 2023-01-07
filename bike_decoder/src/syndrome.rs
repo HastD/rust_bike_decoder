@@ -1,13 +1,13 @@
-use crate::parameters::*;
-use crate::vectors::{DenseVector, SparseErrorVector, ErrorVector};
 use crate::keys::Key;
+use crate::parameters::*;
+use crate::vectors::{DenseVector, ErrorVector, SparseErrorVector};
 use std::{fmt, ops::Add};
 
 // Note: syndromes are padded out to 2*SIZE_AVX so they can be passed to
 // code in decoder.rs that uses AVX2 instructions.
 // However, only bits up to BLOCK_LENGTH are ever used outside of that.
 #[derive(Debug, Default, Clone)]
-pub struct Syndrome(DenseVector<{2*SIZE_AVX}>);
+pub struct Syndrome(DenseVector<{ 2 * SIZE_AVX }>);
 
 impl Syndrome {
     pub fn zero() -> Self {
@@ -15,7 +15,7 @@ impl Syndrome {
     }
 
     pub fn new(list: [bool; BLOCK_LENGTH]) -> Self {
-        let mut v = [false; 2*SIZE_AVX];
+        let mut v = [false; 2 * SIZE_AVX];
         v[..BLOCK_LENGTH].copy_from_slice(&list);
         Self(DenseVector::new(v))
     }
@@ -126,12 +126,15 @@ impl PartialEq for Syndrome {
     }
 }
 
-impl Eq for Syndrome { }
+impl Eq for Syndrome {}
 
 impl fmt::Display for Syndrome {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let str_bits: Vec<&str> = self.contents().iter()
-            .map(|bit| if *bit { "1" } else { "0" }).collect();
+        let str_bits: Vec<&str> = self
+            .contents()
+            .iter()
+            .map(|bit| if *bit { "1" } else { "0" })
+            .collect();
         write!(f, "[{}]", str_bits.join(", "))
     }
 }

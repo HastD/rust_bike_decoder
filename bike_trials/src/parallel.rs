@@ -3,16 +3,17 @@ use crate::{
     record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
+use anyhow::{Context, Result};
 use bike_decoder::{
     decoder::DecodingFailure,
-    random::{get_or_insert_global_seed, try_insert_global_seed, current_thread_id,
-        custom_thread_rng},
+    random::{
+        current_thread_id, custom_thread_rng, get_or_insert_global_seed, try_insert_global_seed,
+    },
 };
-use std::time::{Duration, Instant};
-use anyhow::{Context, Result};
-use crossbeam_channel::{Sender, Receiver, RecvTimeoutError, TryRecvError, unbounded as channel};
+use crossbeam_channel::{unbounded as channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use rand::Rng;
 use rayon::prelude::*;
+use std::time::{Duration, Instant};
 
 pub fn trial_iteration<R: Rng + ?Sized>(
     settings: &TrialSettings,
@@ -42,13 +43,19 @@ pub fn trial_loop(
     while trials_remaining > 0 {
         let tx_results = tx_results.clone();
         let new_trials = settings.save_frequency().min(trials_remaining);
-        let new_failure_count = pool.install(|| (0..new_trials).into_par_iter().map_with(
-            (settings.trial_settings(), tx_results),
-            |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng())
-        ).sum());
+        let new_failure_count = pool.install(|| {
+            (0..new_trials)
+                .into_par_iter()
+                .map_with(
+                    (settings.trial_settings(), tx_results),
+                    |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng()),
+                )
+                .sum()
+        });
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
-        tx_progress.send(dfr)
+        tx_progress
+            .send(dfr)
             .context("Progress receiver should not be closed")?;
         trials_remaining -= new_trials;
     }
@@ -95,7 +102,7 @@ pub fn record_trial_results(
                 Err(RecvTimeoutError::Disconnected) => {
                     // progress channel closed, flag this loop to be skipped
                     rx_progress_open = false;
-                },
+                }
             }
         }
     }
@@ -133,10 +140,14 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
     // Propagate any errors or panics from thread
-    trial_thread.join().unwrap_or_else(|err| std::panic::resume_unwind(err))?;
+    trial_thread
+        .join()
+        .unwrap_or_else(|err| std::panic::resume_unwind(err))?;
     if settings.verbose() >= 1 {
-        eprintln!("{}", application::end_message(data.decoding_failure_ratio(),
-            data.runtime()));
+        eprintln!(
+            "{}",
+            application::end_message(data.decoding_failure_ratio(), data.runtime())
+        );
     }
     Ok(data)
 }

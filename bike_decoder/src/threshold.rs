@@ -6,10 +6,11 @@ use thiserror::Error;
 pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
     let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
     let x = compute_x(r, d, t).expect("Must be able to compute threshold constant X");
-    (0..=BLOCK_LENGTH).map(|ws|
-        exact_threshold_ineq(ws, r, d, t, Some(x))
-            .expect("Must be able to compute thresholds")
-    ).collect()
+    (0..=BLOCK_LENGTH)
+        .map(|ws| {
+            exact_threshold_ineq(ws, r, d, t, Some(x)).expect("Must be able to compute thresholds")
+        })
+        .collect()
 });
 
 fn big_binomial(n: usize, k: usize) -> BigInt {
@@ -17,41 +18,54 @@ fn big_binomial(n: usize, k: usize) -> BigInt {
 }
 
 pub fn compute_x(r: usize, d: usize, t: usize) -> Result<f64, ThresholdError> {
-    let n = 2*r;
-    let w = 2*d;
+    let n = 2 * r;
+    let w = 2 * d;
     let n_minus_w = n - w;
     let mut x_part = BigInt::from(0);
-    for l in (3 .. t.min(w)).step_by(2) {
+    for l in (3..t.min(w)).step_by(2) {
         x_part += (l - 1) * big_binomial(w, l) * big_binomial(n_minus_w, t - l);
     }
     let x = BigRational::new(r * x_part, big_binomial(n, t)).to_f64();
     let err = ThresholdError::XError;
-    x.ok_or(err).and_then(|x| if x.is_finite() { Ok(x) } else { Err(err) })
+    x.ok_or(err)
+        .and_then(|x| if x.is_finite() { Ok(x) } else { Err(err) })
 }
 
-fn threshold_constants(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
--> Result<(f64, f64), ThresholdError> {
-    let n = 2*r;
-    let w = 2*d;
+fn threshold_constants(
+    ws: usize,
+    r: usize,
+    d: usize,
+    t: usize,
+    x: Option<f64>,
+) -> Result<(f64, f64), ThresholdError> {
+    let n = 2 * r;
+    let w = 2 * d;
     let x = x.map_or_else(|| compute_x(r, d, t), Ok)?;
     let pi1 = (ws as f64 + x) / (t * d) as f64;
     let pi0 = ((w * ws) as f64 - x) / ((n - t) * d) as f64;
     Ok((pi0, pi1))
 }
 
-pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
--> Result<u8, ThresholdError> {
+pub fn exact_threshold_ineq(
+    ws: usize,
+    r: usize,
+    d: usize,
+    t: usize,
+    x: Option<f64>,
+) -> Result<u8, ThresholdError> {
     if ws == 0 {
         return Ok(BF_THRESHOLD_MIN);
     } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
-    let n = 2*r;
+    let n = 2 * r;
     let (pi0, pi1) = threshold_constants(ws, r, d, t, x)?;
     let mut threshold: i32 = 1;
     let d = d as i32;
-    while threshold <= d && t as f64 * pi1.powi(threshold) * (1.0 - pi1).powi(d - threshold)
-                    < (n - t) as f64 * pi0.powi(threshold) * (1.0 - pi0).powi(d - threshold) {
+    while threshold <= d
+        && t as f64 * pi1.powi(threshold) * (1.0 - pi1).powi(d - threshold)
+            < (n - t) as f64 * pi0.powi(threshold) * (1.0 - pi0).powi(d - threshold)
+    {
         threshold += 1;
     }
     let threshold = u8::try_from(threshold).or(Err(ThresholdError::OverflowError))?;
@@ -60,14 +74,19 @@ pub fn exact_threshold_ineq(ws: usize, r: usize, d: usize, t: usize, x: Option<f
     Ok(threshold)
 }
 
-pub fn exact_threshold(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>)
--> Result<u8, ThresholdError> {
+pub fn exact_threshold(
+    ws: usize,
+    r: usize,
+    d: usize,
+    t: usize,
+    x: Option<f64>,
+) -> Result<u8, ThresholdError> {
     if ws == 0 {
         return Ok(BF_THRESHOLD_MIN);
     } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
-    let n = 2*r;
+    let n = 2 * r;
     let (pi0, pi1) = threshold_constants(ws, r, d, t, x)?;
 
     let log_frac = ((1.0 - pi0) / (1.0 - pi1)).log2();
