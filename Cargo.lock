@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bike_decoder",
+ "clap 4.0.32",
  "counter",
  "criterion",
  "itertools",

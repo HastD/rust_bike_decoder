@@ -179,16 +179,22 @@ impl AbsorbingDecodingFailure {
 /// Runs in parallel using Rayon.
 pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
     key: &QuasiCyclic<WEIGHT, LENGTH>,
-    weight: usize,
-) -> Vec<Index> {
+    supp_weight: usize,
+    parallel: bool,
+) -> Vec<Vec<Index>> {
     let n = 2 * LENGTH as Index;
     let edges = TannerGraphEdges::new(key);
-    (0..n)
-        .combinations(weight)
-        .par_bridge()
-        .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
-        .flatten()
-        .collect()
+    let combinations = (0..n).combinations(supp_weight);
+    if parallel {
+        combinations
+            .par_bridge()
+            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .collect()
+    } else {
+        combinations
+            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .collect()
+    }
 }
 
 /// Searches for an `(a, b)`-absorbing set for `key`.
