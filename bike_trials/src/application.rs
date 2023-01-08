@@ -98,8 +98,7 @@ pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
         }
         OutputTo::Void => return Ok(()),
     };
-    let mut ser = serde_json::Serializer::new(&mut writer);
-    data.serialize(&mut ser)
+    serde_json::to_writer(&mut writer, data)
         .or_else(|err| write_fallback(err.into(), data))
         .context("data should be writable as JSON")?;
     writer.write_all(b"\n")?;

@@ -6,24 +6,27 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 
-pub type CyclicBlock = SparseVector<BLOCK_WEIGHT, BLOCK_LENGTH>;
+pub type CyclicBlock<const WEIGHT: usize, const LENGTH: usize> = SparseVector<WEIGHT, LENGTH>;
 
 #[derive(Clone, Debug, Deserialize, Eq, Getters, PartialEq, Serialize)]
 #[getset(get = "pub")]
-pub struct Key {
-    h0: CyclicBlock,
-    h1: CyclicBlock,
+pub struct QuasiCyclic<const WEIGHT: usize, const LENGTH: usize> {
+    h0: CyclicBlock<WEIGHT, LENGTH>,
+    h1: CyclicBlock<WEIGHT, LENGTH>,
 }
 
-impl Key {
+pub type KeyBlock = CyclicBlock<BLOCK_WEIGHT, BLOCK_LENGTH>;
+pub type Key = QuasiCyclic<BLOCK_WEIGHT, BLOCK_LENGTH>;
+
+impl<const WEIGHT: usize, const LENGTH: usize> QuasiCyclic<WEIGHT, LENGTH> {
     #[inline]
-    pub fn new(h0: CyclicBlock, h1: CyclicBlock) -> Self {
+    pub fn new(h0: CyclicBlock<WEIGHT, LENGTH>, h1: CyclicBlock<WEIGHT, LENGTH>) -> Self {
         Self { h0, h1 }
     }
 
     pub fn from_support(
-        h0_supp: [Index; BLOCK_WEIGHT],
-        h1_supp: [Index; BLOCK_WEIGHT],
+        h0_supp: [Index; WEIGHT],
+        h1_supp: [Index; WEIGHT],
     ) -> Result<Self, InvalidSupport> {
         Ok(Self {
             h0: CyclicBlock::from_support(h0_supp)?,
@@ -32,7 +35,7 @@ impl Key {
     }
 
     #[inline]
-    pub fn take_blocks(self) -> (CyclicBlock, CyclicBlock) {
+    pub fn take_blocks(self) -> (CyclicBlock<WEIGHT, LENGTH>, CyclicBlock<WEIGHT, LENGTH>) {
         (self.h0, self.h1)
     }
 
@@ -188,19 +191,21 @@ pub enum WeakType {
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub enum KeyFilter {
+pub enum QuasiCyclicFilter<const WEIGHT: usize> {
     #[default]
     Any,
     NonWeak(u8),
     Weak(WeakType, u8),
 }
 
-impl KeyFilter {
-    pub fn new(filter: i8, threshold: u8) -> Result<Self, KeyFilterError> {
+pub type KeyFilter = QuasiCyclicFilter<BLOCK_WEIGHT>;
+
+impl<const WEIGHT: usize> QuasiCyclicFilter<WEIGHT> {
+    pub fn new(filter: i8, threshold: u8) -> Result<Self, FilterError> {
         if filter != 0 && threshold < 2 {
-            return Err(KeyFilterError::InvalidThreshold);
-        } else if threshold as usize >= BLOCK_WEIGHT {
-            // Thresholds >= BLOCK_WEIGHT are tautological and impose no conditions
+            return Err(FilterError::InvalidThreshold);
+        } else if threshold as usize >= WEIGHT {
+            // Thresholds >= WEIGHT are tautological and impose no conditions
             return Ok(Self::Any);
         }
         match filter {
@@ -209,13 +214,13 @@ impl KeyFilter {
             1 => Ok(Self::Weak(WeakType::Type1, threshold)),
             2 => Ok(Self::Weak(WeakType::Type2, threshold)),
             3 => Ok(Self::Weak(WeakType::Type3, threshold)),
-            _ => Err(KeyFilterError::InvalidFilter),
+            _ => Err(FilterError::InvalidFilter),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Error)]
-pub enum KeyFilterError {
+pub enum FilterError {
     #[error("weak key filter must be in {{-1, 0, 1, 2, 3}}")]
     InvalidFilter,
     #[error("weak key threshold must be >= 2")]

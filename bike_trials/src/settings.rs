@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bike_decoder::{
-    keys::{Key, KeyFilter, KeyFilterError},
+    keys::{FilterError, Key, KeyFilter},
     ncw::NearCodewordClass,
     random::Seed,
 };
@@ -247,7 +247,7 @@ impl OutputTo {
 #[derive(Copy, Clone, Debug, Error)]
 pub enum SettingsError {
     #[error(transparent)]
-    InvalidFilter(#[from] KeyFilterError),
+    InvalidFilter(#[from] FilterError),
     #[error("fixed_key does not match key filter")]
     InvalidFixedKey,
     #[error("ncw_overlap requires ncw_class to be set")]
