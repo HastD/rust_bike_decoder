@@ -4,7 +4,10 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize, Serializer};
-use std::fmt;
+use std::{
+    fmt,
+    ops::{Add, Sub},
+};
 use thiserror::Error;
 
 pub type Index = u32;
@@ -382,6 +385,22 @@ impl<const LENGTH: usize> DenseVector<LENGTH> {
     pub fn add_mod2(mut self, other: Self) -> Self {
         self.xor_with(other.0);
         self
+    }
+}
+
+impl<const L: usize> Add for DenseVector<L> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        self.add_mod2(other)
+    }
+}
+
+impl<const L: usize> Sub for DenseVector<L> {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        self.add_mod2(other)
     }
 }
 

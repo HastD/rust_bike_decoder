@@ -1,5 +1,5 @@
 [workspace]
-members = ["bike_decoder", "bike_trials"]
+members = ["absorbing", "bike_decoder", "bike_trials"]
 
 [profile.dev]
 opt-level = 1

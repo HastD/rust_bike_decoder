@@ -1,5 +1,6 @@
 use bike_decoder::{
     decoder::{bgf_decoder, unsatisfied_parity_checks},
+    graphs::is_absorbing,
     keys::Key,
     ncw::{NearCodewordClass, TaggedErrorVector},
     parameters::*,
@@ -110,9 +111,26 @@ pub fn group_threshold(c: &mut Criterion) {
     });
 }
 
+pub fn group_graph(c: &mut Criterion) {
+    c.bench_function("is_absorbing", |b| {
+        let mut rng = custom_thread_rng();
+        b.iter_batched_ref(
+            || {
+                let key = Key::random(&mut rng);
+                let e_supp = SparseErrorVector::random(&mut rng);
+                (key, e_supp)
+            },
+            |(key, e_supp)| {
+                black_box(is_absorbing(black_box(key), black_box(e_supp.support())));
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = group_decoder, group_randgen, group_syndrome, group_threshold,
+    targets = group_decoder, group_randgen, group_syndrome, group_threshold, group_graph,
 }
 criterion_main!(benches);

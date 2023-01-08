@@ -20,7 +20,7 @@ impl DecodingResult {
     pub fn from(key: Key, vector: TaggedErrorVector) -> Self {
         let e_supp = vector.vector();
         let e_in = e_supp.dense();
-        let mut syn = Syndrome::from_sparse(&key, vector.vector());
+        let mut syn = Syndrome::from_sparse(&key, e_supp);
         let (e_out, same_syndrome) = bgf_decoder(&key, &mut syn);
         let success = e_in == e_out;
         assert!(same_syndrome || !success);
