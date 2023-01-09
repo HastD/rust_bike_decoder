@@ -3,6 +3,7 @@ use bike_decoder::{
     keys::{Key, KeyFilter},
     parameters::*,
     random::Seed,
+    threshold::{bf_masked_threshold, bf_threshold_min},
 };
 use getset::{CopyGetters, Getters, Setters};
 use serde::{
@@ -57,8 +58,8 @@ impl DataRecord {
             t: ERROR_WEIGHT,
             iterations: NB_ITER,
             gray_threshold_diff: GRAY_THRESHOLD_DIFF,
-            bf_threshold_min: BF_THRESHOLD_MIN,
-            bf_masked_threshold: BF_MASKED_THRESHOLD,
+            bf_threshold_min: bf_threshold_min(BLOCK_WEIGHT),
+            bf_masked_threshold: bf_masked_threshold(BLOCK_WEIGHT),
             key_filter,
             fixed_key,
             decoding_failure_ratio: DecodingFailureRatio::default(),

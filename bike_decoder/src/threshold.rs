@@ -1,17 +1,27 @@
-use crate::parameters::*;
 use num::{integer::binomial, BigInt, BigRational, ToPrimitive};
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use thiserror::Error;
 
-pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
-    let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-    let x = compute_x(r, d, t).expect("Must be able to compute threshold constant X");
-    (0..=BLOCK_LENGTH)
-        .map(|ws| {
-            exact_threshold_ineq(ws, r, d, t, Some(x)).expect("Must be able to compute thresholds")
-        })
-        .collect()
-});
+pub static THRESHOLD_CACHE: OnceCell<Vec<u8>> = OnceCell::new();
+
+pub fn build_threshold_cache(r: usize, d: usize, t: usize) -> Result<Vec<u8>, ThresholdError> {
+    let x = compute_x(r, d, t)?;
+    let mut threshold_cache: Vec<u8> = Vec::with_capacity(r + 1);
+    for ws in 0..=r {
+        threshold_cache.push(exact_threshold_ineq(ws, r, d, t, Some(x))?);
+    }
+    Ok(threshold_cache)
+}
+
+pub const fn bf_threshold_min(block_weight: usize) -> u8 {
+    assert!(block_weight <= 507, "Block weight > 507 not supported");
+    ((block_weight + 1) / 2) as u8
+}
+
+pub const fn bf_masked_threshold(block_weight: usize) -> u8 {
+    assert!(block_weight <= 507, "Block weight > 507 not supported");
+    ((block_weight + 1) / 2 + 1) as u8
+}
 
 fn big_binomial(n: usize, k: usize) -> BigInt {
     binomial(BigInt::from(n), BigInt::from(k))
@@ -54,23 +64,23 @@ pub fn exact_threshold_ineq(
     x: Option<f64>,
 ) -> Result<u8, ThresholdError> {
     if ws == 0 {
-        return Ok(BF_THRESHOLD_MIN);
+        return Ok(bf_threshold_min(d));
     } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
     let n = 2 * r;
     let (pi0, pi1) = threshold_constants(ws, r, d, t, x)?;
     let mut threshold: i32 = 1;
-    let d = d as i32;
-    while threshold <= d
-        && t as f64 * pi1.powi(threshold) * (1.0 - pi1).powi(d - threshold)
-            < (n - t) as f64 * pi0.powi(threshold) * (1.0 - pi0).powi(d - threshold)
+    let di = d as i32;
+    while threshold <= di
+        && t as f64 * pi1.powi(threshold) * (1.0 - pi1).powi(di - threshold)
+            < (n - t) as f64 * pi0.powi(threshold) * (1.0 - pi0).powi(di - threshold)
     {
         threshold += 1;
     }
     let threshold = u8::try_from(threshold).or(Err(ThresholdError::OverflowError))?;
     // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
-    let threshold = threshold.max(BF_THRESHOLD_MIN);
+    let threshold = threshold.max(bf_threshold_min(d));
     Ok(threshold)
 }
 
@@ -82,7 +92,7 @@ pub fn exact_threshold(
     x: Option<f64>,
 ) -> Result<u8, ThresholdError> {
     if ws == 0 {
-        return Ok(BF_THRESHOLD_MIN);
+        return Ok(bf_threshold_min(d));
     } else if ws > r {
         return Err(ThresholdError::WeightError(ws, r));
     }
@@ -96,7 +106,7 @@ pub fn exact_threshold(
     if threshold.is_finite() {
         let threshold = u8::try_from(threshold as u32).or(Err(ThresholdError::OverflowError))?;
         // modification to threshold mentioned in Vasseur's thesis, section 6.1.3.1
-        let threshold = threshold.max(BF_THRESHOLD_MIN);
+        let threshold = threshold.max(bf_threshold_min(d));
         Ok(threshold)
     } else {
         Err(ThresholdError::Infinite)
@@ -130,7 +140,9 @@ mod tests {
     #[test]
     fn known_thresholds() {
         let (r, d, t) = (587, 15, 18);
-        assert_eq!((r, d, t), (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT));
+        let threshold_cache = THRESHOLD_CACHE
+            .get_or_try_init(|| build_threshold_cache(r, d, t))
+            .expect("Failed to initialize threshold cache");
         let thresholds_no_min = [
             1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
             5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7,
@@ -159,8 +171,8 @@ mod tests {
         let x = compute_x(r, d, t).unwrap();
         for ws in 0..=r {
             let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
-            assert_eq!(thresh, thresholds_no_min[ws].max(BF_THRESHOLD_MIN));
-            assert_eq!(thresh, THRESHOLD_CACHE[ws]);
+            assert_eq!(thresh, thresholds_no_min[ws].max(bf_threshold_min(d)));
+            assert_eq!(thresh, threshold_cache[ws]);
         }
     }
 }

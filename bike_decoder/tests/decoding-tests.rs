@@ -3,6 +3,7 @@ use bike_decoder::{
     keys::Key,
     parameters::*,
     syndrome::Syndrome,
+    threshold::{bf_masked_threshold, bf_threshold_min},
     vectors::{ErrorVector, SparseErrorVector},
 };
 
@@ -62,6 +63,8 @@ fn decoding_failure_example() {
 
 #[test]
 fn syndrome_e_out_consistent() {
+    const BF_THRESHOLD_MIN: u8 = bf_threshold_min(BLOCK_WEIGHT);
+    const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
     let mut rng = rand::thread_rng();
     for _ in 0..TRIALS {
         let key = Key::random(&mut rng);
