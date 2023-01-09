@@ -1,6 +1,7 @@
 use bike_decoder::{
     decoder::{bgf_decoder, DecodingFailure},
     keys::QuasiCyclic,
+    random::custom_thread_rng,
     syndrome::Syndrome,
     vectors::Index,
 };
@@ -197,26 +198,26 @@ pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
     }
 }
 
-/// Searches for an `(a, b)`-absorbing set for `key`.
-pub fn find_absorbing_set<const WEIGHT: usize, const LENGTH: usize>(
+/// Searches for absorbing sets for `key`.
+pub fn sample_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
     key: &QuasiCyclic<WEIGHT, LENGTH>,
-    a: usize,
-    b: usize,
-) -> (Vec<VariableNode>, Vec<CheckNode>, usize) {
+    supp_weight: usize,
+    samples: usize,
+    parallel: bool,
+) -> Vec<Vec<Index>> {
     let n = 2 * LENGTH as Index;
     let edges = TannerGraphEdges::new(key);
-    let mut rng = rand::thread_rng();
-    let mut iter_count = 0;
-    loop {
-        iter_count += 1;
-        let mut supp = (0..n).choose_multiple(&mut rng, a);
-        supp.sort();
-        if let Some((_, odd_check_nodes)) = is_absorbing_subgraph(&edges, &supp) {
-            if odd_check_nodes.len() == b {
-                let supp = supp.into_iter().map(VariableNode).collect();
-                return (supp, odd_check_nodes, iter_count);
-            }
-        }
+    if parallel {
+        (0..samples)
+            .into_par_iter()
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
+            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .collect()
+    } else {
+        (0..samples)
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
+            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .collect()
     }
 }
 

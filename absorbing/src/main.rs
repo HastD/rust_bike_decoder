@@ -4,6 +4,7 @@ use crate::graphs::AbsorbingDecodingFailure;
 use anyhow::{Context, Result};
 use bike_decoder::{decoder::DecodingFailure, keys::QuasiCyclic};
 use clap::{Parser, Subcommand};
+use num_integer::binomial;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::{
@@ -33,6 +34,19 @@ enum Command {
         key: Option<String>,
         #[arg(help = "Weight of absorbing sets")]
         weight: usize,
+        #[arg(short = 'v', long, help = "Verbose output")]
+        verbose: bool,
+        #[arg(long, help = "Run in parallel using multiple threads")]
+        parallel: bool,
+    },
+    /// Samples absorbing sets of a given weight
+    Sample {
+        #[arg(long, help = "Use the specified key (in JSON format)")]
+        key: Option<String>,
+        #[arg(help = "Weight of absorbing sets")]
+        weight: usize,
+        #[arg(short = 'N', long, help = "Number of samples")]
+        number: f64,
         #[arg(short = 'v', long, help = "Verbose output")]
         verbose: bool,
         #[arg(long, help = "Run in parallel using multiple threads")]
@@ -76,6 +90,43 @@ fn enumerate(
             absorbing.len(),
             error_weight,
         );
+        let total = binomial(2 * BLOCK_LENGTH, error_weight);
+        if !absorbing.is_empty() {
+            eprintln!(
+                "(1 in {} error vectors of weight {} are absorbing.)",
+                (total as f64 / absorbing.len() as f64) as u64,
+                error_weight
+            );
+        }
+    }
+    write_json(&key)?;
+    write_json(&absorbing)?;
+    Ok(())
+}
+
+fn sample(
+    key: Option<EnumKey>,
+    error_weight: usize,
+    samples: usize,
+    verbose: bool,
+    parallel: bool,
+) -> Result<()> {
+    if samples >= binomial(2 * BLOCK_LENGTH, error_weight) {
+        eprintln!("Number of samples >= total number of candidates; enumerating instead.");
+        return enumerate(key, error_weight, verbose, parallel);
+    }
+    let key = key.unwrap_or_else(|| EnumKey::random(&mut rand::thread_rng()));
+    let time = Instant::now();
+    let absorbing = graphs::sample_absorbing_sets(&key, error_weight, samples, parallel);
+    if verbose {
+        eprintln!("Key: {}", serde_json::to_string(&key)?);
+        eprintln!("Runtime: {:?}", time.elapsed());
+        eprintln!(
+            "Found {} absorbing sets (out of {} sampled) of weight {}.",
+            absorbing.len(),
+            samples,
+            error_weight,
+        );
     }
     write_json(&key)?;
     write_json(&absorbing)?;
@@ -100,6 +151,16 @@ fn main() -> Result<()> {
         } => {
             let key = key.map(parse_key).transpose()?;
             enumerate(key, weight, verbose, parallel)
+        }
+        Command::Sample {
+            key,
+            weight,
+            number,
+            verbose,
+            parallel,
+        } => {
+            let key = key.map(parse_key).transpose()?;
+            sample(key, weight, number as usize, verbose, parallel)
         }
     }
 }

@@ -11,6 +11,7 @@ bike_decoder = { path = "../bike_decoder" }
 clap = { version = "4.0.32", features = ["derive"] }
 counter = "0.5.7"
 itertools = "0.10.5"
+num-integer = "0.1.45"
 petgraph = "0.6.2"
 rand = "0.8.5"
 rayon = "1.6.1"
