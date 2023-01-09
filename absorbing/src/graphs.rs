@@ -100,7 +100,7 @@ fn check_node_degrees(subgraph: &[(VariableNode, CheckNode)]) -> Counter<CheckNo
     subgraph.iter().map(|&(_, check)| check).collect()
 }
 
-fn odd_check_node_neighbors<const WEIGHT: usize, const LENGTH: usize>(
+pub fn odd_check_node_neighbors<const WEIGHT: usize, const LENGTH: usize>(
     edges: &TannerGraphEdges<WEIGHT, LENGTH>,
     supp: &[Index],
 ) -> (
@@ -121,18 +121,19 @@ fn odd_check_node_neighbors<const WEIGHT: usize, const LENGTH: usize>(
 pub fn is_absorbing_subgraph<const WEIGHT: usize, const LENGTH: usize>(
     edges: &TannerGraphEdges<WEIGHT, LENGTH>,
     supp: &[Index],
-) -> Option<(usize, Vec<CheckNode>)> {
-    let (_, check_node_degrees, odd_check_nodes) = odd_check_node_neighbors(edges, supp);
+) -> bool {
+    let subgraph = subgraph_from_support(edges, supp);
+    let check_node_degrees = check_node_degrees(&subgraph);
     for &var in supp {
         let even_count = 1 + &edges.0[var as usize]
             .iter()
             .filter(|(_, check)| *check_node_degrees.get(check).unwrap_or(&0) % 2 == 0)
             .count();
         if even_count <= (WEIGHT + 1) / 2 {
-            return None;
+            return false;
         }
     }
-    Some((supp.len(), odd_check_nodes))
+    true
 }
 
 /// Given an r-by-2r parity check matrix specified by circulant blocks, and a
@@ -142,7 +143,7 @@ pub fn is_absorbing_subgraph<const WEIGHT: usize, const LENGTH: usize>(
 pub fn is_absorbing<const WEIGHT: usize, const LENGTH: usize>(
     key: &QuasiCyclic<WEIGHT, LENGTH>,
     supp: &[Index],
-) -> Option<(usize, Vec<CheckNode>)> {
+) -> bool {
     let edges = TannerGraphEdges::new(key);
     is_absorbing_subgraph(&edges, supp)
 }
@@ -151,23 +152,23 @@ pub fn is_absorbing<const WEIGHT: usize, const LENGTH: usize>(
 pub struct AbsorbingDecodingFailure {
     df: DecodingFailure,
     supp: Vec<Index>,
-    weight: usize,
     odd_check_nodes: Vec<CheckNode>,
 }
 
 impl AbsorbingDecodingFailure {
     pub fn new(df: DecodingFailure) -> Option<Self> {
         let key = df.key();
+        let edges = TannerGraphEdges::new(key);
         let e_supp = df.vector().vector();
         let e_in = e_supp.dense();
         let mut syn = Syndrome::from_sparse(key, e_supp);
         let (e_out, _) = bgf_decoder(key, &mut syn);
         let supp = (e_in - e_out).support();
-        if let Some((weight, odd_check_nodes)) = is_absorbing(key, &supp) {
+        if is_absorbing_subgraph(&edges, &supp) {
+            let (_, _, odd_check_nodes) = odd_check_node_neighbors(&edges, &supp);
             Some(Self {
                 df,
                 supp,
-                weight,
                 odd_check_nodes,
             })
         } else {
@@ -189,11 +190,11 @@ pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
     if parallel {
         combinations
             .par_bridge()
-            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .filter(|supp| is_absorbing_subgraph(&edges, supp))
             .collect()
     } else {
         combinations
-            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .filter(|supp| is_absorbing_subgraph(&edges, supp))
             .collect()
     }
 }
@@ -211,12 +212,12 @@ pub fn sample_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
         (0..samples)
             .into_par_iter()
             .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
-            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .filter(|supp| is_absorbing_subgraph(&edges, supp))
             .collect()
     } else {
         (0..samples)
             .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
-            .filter(|supp| is_absorbing_subgraph(&edges, supp).is_some())
+            .filter(|supp| is_absorbing_subgraph(&edges, supp))
             .collect()
     }
 }

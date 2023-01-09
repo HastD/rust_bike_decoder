@@ -94,7 +94,7 @@ fn enumerate(
         if !absorbing.is_empty() {
             eprintln!(
                 "(1 in {} error vectors of weight {} are absorbing.)",
-                (total as f64 / absorbing.len() as f64) as u64,
+                (total as f64 / absorbing.len() as f64).round() as usize,
                 error_weight
             );
         }
