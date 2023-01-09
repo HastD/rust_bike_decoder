@@ -1,8 +1,13 @@
 use num::{integer::binomial, BigInt, BigRational, ToPrimitive};
-use once_cell::sync::OnceCell;
+use once_cell::sync::Lazy;
 use thiserror::Error;
 
-pub static THRESHOLD_CACHE: OnceCell<Vec<u8>> = OnceCell::new();
+use crate::parameters::{BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT};
+
+pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
+    build_threshold_cache(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT)
+        .expect("Must be able to initialize threshold cache")
+});
 
 pub fn build_threshold_cache(r: usize, d: usize, t: usize) -> Result<Vec<u8>, ThresholdError> {
     let x = compute_x(r, d, t)?;
@@ -140,9 +145,6 @@ mod tests {
     #[test]
     fn known_thresholds() {
         let (r, d, t) = (587, 15, 18);
-        let threshold_cache = THRESHOLD_CACHE
-            .get_or_try_init(|| build_threshold_cache(r, d, t))
-            .expect("Failed to initialize threshold cache");
         let thresholds_no_min = [
             1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
             5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7,
@@ -172,7 +174,7 @@ mod tests {
         for ws in 0..=r {
             let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
             assert_eq!(thresh, thresholds_no_min[ws].max(bf_threshold_min(d)));
-            assert_eq!(thresh, threshold_cache[ws]);
+            assert_eq!(thresh, THRESHOLD_CACHE[ws]);
         }
     }
 }

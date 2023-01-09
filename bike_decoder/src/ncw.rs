@@ -1,6 +1,8 @@
-use crate::keys::Key;
-use crate::parameters::*;
-use crate::vectors::{Index, SparseErrorVector};
+use crate::{
+    keys::{Key, QuasiCyclic},
+    parameters::*,
+    vectors::{Index, SparseErrorVector},
+};
 use getset::{CopyGetters, Getters};
 use rand::{
     distributions::{Distribution, Uniform},
@@ -111,12 +113,7 @@ impl TaggedErrorVector {
         }
     }
 
-    pub fn near_codeword<R>(
-        key: &Key,
-        class: NearCodewordClass,
-        l: usize,
-        rng: &mut R,
-    ) -> TaggedErrorVector
+    pub fn near_codeword<R>(key: &Key, class: NearCodewordClass, l: usize, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {
@@ -175,31 +172,40 @@ impl fmt::Display for TaggedErrorVector {
     }
 }
 
-fn sample_c(key: &Key) -> Vec<Index> {
+fn sample_c<const WEIGHT: usize, const LENGTH: usize>(
+    key: &QuasiCyclic<WEIGHT, LENGTH>,
+) -> Vec<Index> {
     key.h0()
         .support()
         .iter()
-        .map(|idx| *idx + BLOCK_LENGTH as Index)
+        .map(|idx| *idx + LENGTH as Index)
         .chain(key.h1().support().iter().copied())
         .collect()
 }
 
-fn sample_n(key: &Key, block_flag: u8) -> Vec<Index> {
+fn sample_n<const WEIGHT: usize, const LENGTH: usize>(
+    key: &QuasiCyclic<WEIGHT, LENGTH>,
+    block_flag: u8,
+) -> Vec<Index> {
     if block_flag % 2 == 0 {
         key.h0().support().to_vec()
     } else {
         key.h1()
             .support()
             .iter()
-            .map(|idx| *idx + BLOCK_LENGTH as Index)
+            .map(|idx| *idx + LENGTH as Index)
             .collect()
     }
 }
 
-fn sample_2n(key: &Key, shift: Index, block_flag: u8) -> Vec<Index> {
+fn sample_2n<const WEIGHT: usize, const LENGTH: usize>(
+    key: &QuasiCyclic<WEIGHT, LENGTH>,
+    shift: Index,
+    block_flag: u8,
+) -> Vec<Index> {
     let mut sum_n = sample_n(key, block_flag % 2);
     let mut supp2 = sample_n(key, (block_flag >> 1) % 2);
-    shift_blockwise(&mut supp2, shift, BLOCK_LENGTH as Index);
+    shift_blockwise(&mut supp2, shift, LENGTH as Index);
     // Symmetric difference of supp1 and supp2
     for idx in &supp2 {
         if let Some(pos) = sum_n.iter().position(|x| *x == *idx) {

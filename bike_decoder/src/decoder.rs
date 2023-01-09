@@ -3,7 +3,7 @@ use crate::{
     ncw::TaggedErrorVector,
     parameters::*,
     syndrome::Syndrome,
-    threshold::{bf_masked_threshold, build_threshold_cache, THRESHOLD_CACHE},
+    threshold::{bf_masked_threshold, THRESHOLD_CACHE},
     vectors::ErrorVector,
 };
 use getset::{CopyGetters, Getters};
@@ -95,11 +95,8 @@ pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
     let mut e_out = ErrorVector::zero();
     let mut ws = s.hamming_weight();
-    let threshold_cache = THRESHOLD_CACHE
-        .get_or_try_init(|| build_threshold_cache(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT))
-        .expect("Failed to initialize threshold cache");
     // Iteration 0
-    let thr = threshold_cache[ws];
+    let thr = THRESHOLD_CACHE[ws];
     let (black, gray) = bf_iter(key, s, &mut e_out, thr);
     bf_masked_iter(key, s, &mut e_out, black, BF_MASKED_THRESHOLD);
     bf_masked_iter(key, s, &mut e_out, gray, BF_MASKED_THRESHOLD);
@@ -108,7 +105,7 @@ pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
         return (e_out, true);
     }
     for _ in 1..NB_ITER {
-        let thr = threshold_cache[ws];
+        let thr = THRESHOLD_CACHE[ws];
         bf_iter_no_mask(key, s, &mut e_out, thr);
         ws = s.hamming_weight();
         if ws == 0 {

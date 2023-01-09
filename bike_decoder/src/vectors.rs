@@ -25,6 +25,7 @@ pub enum InvalidSupport {
 
 // Sparse vector of fixed weight and length over GF(2)
 #[derive(Debug, Clone, Deserialize)]
+#[repr(transparent)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     #[serde(with = "serde_arrays")] [Index; WEIGHT],
 );
@@ -310,6 +311,7 @@ impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
 
 // Dense vectors of fixed length over GF(2)
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct DenseVector<const LENGTH: usize>([bool; LENGTH]);
 
 impl<const LENGTH: usize> Default for DenseVector<LENGTH> {
