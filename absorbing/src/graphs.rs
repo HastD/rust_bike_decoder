@@ -176,7 +176,7 @@ impl AbsorbingDecodingFailure {
 }
 
 /// Enumerates all absorbing sets of a given weight for `key`.
-/// Runs in parallel using Rayon.
+/// The `parallel` argument uses Rayon to run the computation in parallel.
 pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
     key: &QuasiCyclic<WEIGHT, LENGTH>,
     supp_weight: usize,
