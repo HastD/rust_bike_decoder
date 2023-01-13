@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use bike_decoder::{decoder::DecodingFailure, keys::QuasiCyclic};
 use clap::{Parser, Subcommand};
 use num_integer::binomial;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::{
@@ -22,6 +23,8 @@ type EnumKey = QuasiCyclic<BLOCK_WEIGHT, BLOCK_LENGTH>;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    #[arg(long, help = "Run in parallel using multiple threads")]
+    parallel: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -41,25 +44,21 @@ enum Command {
             help = "Use the specified key (in JSON format) [default: random]"
         )]
         key: Option<String>,
-        #[arg(help = "Weight of absorbing sets")]
+        #[arg(short, long, help = "Weight of absorbing sets")]
         weight: usize,
         #[arg(short = 'v', long, help = "Verbose output")]
         verbose: bool,
-        #[arg(long, help = "Run in parallel using multiple threads")]
-        parallel: bool,
     },
     /// Samples absorbing sets of a given weight
     Sample {
         #[arg(long, help = "Use the specified key (in JSON format)")]
         key: Option<String>,
-        #[arg(help = "Weight of absorbing sets")]
+        #[arg(short, long, help = "Weight of absorbing sets")]
         weight: usize,
         #[arg(short = 'N', long, help = "Number of samples")]
         number: f64,
         #[arg(short = 'v', long, help = "Verbose output")]
         verbose: bool,
-        #[arg(long, help = "Run in parallel using multiple threads")]
-        parallel: bool,
     },
 }
 
@@ -71,14 +70,21 @@ fn write_json(data: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-fn filter(overlaps: bool) -> Result<()> {
+fn filter(overlaps: bool, parallel: bool) -> Result<()> {
     let mut de = Deserializer::from_reader(io::stdin());
     let decoding_failures = <Vec<DecodingFailure>>::deserialize(&mut de)
         .context("Failed to parse JSON input as Vec<DecodingFailure>")?;
-    let absorbing: Vec<AbsorbingDecodingFailure> = decoding_failures
-        .into_iter()
-        .filter_map(|df| AbsorbingDecodingFailure::new(df, overlaps))
-        .collect();
+    let absorbing: Vec<AbsorbingDecodingFailure> = if parallel {
+        decoding_failures
+            .into_par_iter()
+            .filter_map(|df| AbsorbingDecodingFailure::new(df, overlaps))
+            .collect()
+    } else {
+        decoding_failures
+            .into_iter()
+            .filter_map(|df| AbsorbingDecodingFailure::new(df, overlaps))
+            .collect()
+    };
     write_json(&absorbing)
 }
 
@@ -151,25 +157,23 @@ fn parse_key(s: String) -> Result<EnumKey> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Filter { ncw } => filter(ncw),
+        Command::Filter { ncw } => filter(ncw, cli.parallel),
         Command::Enumerate {
             key,
             weight,
             verbose,
-            parallel,
         } => {
             let key = key.map(parse_key).transpose()?;
-            enumerate(key, weight, verbose, parallel)
+            enumerate(key, weight, verbose, cli.parallel)
         }
         Command::Sample {
             key,
             weight,
             number,
             verbose,
-            parallel,
         } => {
             let key = key.map(parse_key).transpose()?;
-            sample(key, weight, number as usize, verbose, parallel)
+            sample(key, weight, number as usize, verbose, cli.parallel)
         }
     }
 }

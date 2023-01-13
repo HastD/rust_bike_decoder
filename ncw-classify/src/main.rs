@@ -6,6 +6,7 @@ use bike_decoder::{
 };
 use clap::{Parser, Subcommand};
 use ncw_classify::ClassifiedVector;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::io::{self, Write};
@@ -15,6 +16,8 @@ use std::io::{self, Write};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    #[arg(long, help = "Run in parallel using multiple threads")]
+    parallel: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -28,12 +31,10 @@ enum Command {
             help = "Use the specified key (in JSON format) [default: random]"
         )]
         key: Option<String>,
-        #[arg(help = "Weight of absorbing sets")]
+        #[arg(short, long, help = "Weight of absorbing sets")]
         weight: usize,
         #[arg(short = 'N', long, help = "Number of samples")]
         number: f64,
-        #[arg(long, help = "Run in parallel using multiple threads")]
-        parallel: bool,
     },
 }
 
@@ -45,14 +46,21 @@ fn write_json(data: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-fn process_input() -> Result<()> {
+fn process_input(parallel: bool) -> Result<()> {
     let mut de = Deserializer::from_reader(io::stdin());
     let decoding_failures = <Vec<DecodingFailure>>::deserialize(&mut de)
         .context("Failed to parse JSON input as Vec<DecodingFailure>")?;
-    let classified: Vec<ClassifiedVector<BLOCK_WEIGHT, BLOCK_LENGTH>> = decoding_failures
-        .into_iter()
-        .map(|df| ClassifiedVector::new(df.key().clone(), df.vector().vector().support()))
-        .collect();
+    let classified: Vec<ClassifiedVector<BLOCK_WEIGHT, BLOCK_LENGTH>> = if parallel {
+        decoding_failures
+            .into_par_iter()
+            .map(|df| ClassifiedVector::new(df.key().clone(), df.vector().vector().support()))
+            .collect()
+    } else {
+        decoding_failures
+            .into_iter()
+            .map(|df| ClassifiedVector::new(df.key().clone(), df.vector().vector().support()))
+            .collect()
+    };
     write_json(&classified)
 }
 
@@ -72,15 +80,14 @@ fn parse_key(s: String) -> Result<Key> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Process => process_input(),
+        Command::Process => process_input(cli.parallel),
         Command::Sample {
             key,
             weight,
             number,
-            parallel,
         } => {
             let key = key.map(parse_key).transpose()?;
-            sample(key, weight, number as usize, parallel)
+            sample(key, weight, number as usize, cli.parallel)
         }
     }
 }
