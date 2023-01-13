@@ -1,11 +1,13 @@
 use bike_decoder::{
     decoder::{bgf_decoder, DecodingFailure},
     keys::QuasiCyclic,
+    ncw::NcwOverlaps,
     random::custom_thread_rng,
     syndrome::Syndrome,
     vectors::Index,
 };
 use counter::Counter;
+use getset::Getters;
 use itertools::Itertools;
 use petgraph::graph::{NodeIndex, UnGraph};
 use rand::seq::IteratorRandom;
@@ -148,15 +150,17 @@ pub fn is_absorbing<const WEIGHT: usize, const LENGTH: usize>(
     is_absorbing_subgraph(&edges, supp)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Getters, Serialize, Deserialize)]
+#[getset(get = "pub")]
 pub struct AbsorbingDecodingFailure {
     df: DecodingFailure,
     supp: Vec<Index>,
     odd_check_nodes: Vec<CheckNode>,
+    overlaps: Option<NcwOverlaps>,
 }
 
 impl AbsorbingDecodingFailure {
-    pub fn new(df: DecodingFailure) -> Option<Self> {
+    pub fn new(df: DecodingFailure, compute_overlaps: bool) -> Option<Self> {
         let key = df.key();
         let edges = TannerGraphEdges::new(key);
         let e_supp = df.vector().vector();
@@ -166,10 +170,16 @@ impl AbsorbingDecodingFailure {
         let supp = (e_in - e_out).support();
         if is_absorbing_subgraph(&edges, &supp) {
             let (_, _, odd_check_nodes) = odd_check_node_neighbors(&edges, &supp);
+            let overlaps = if compute_overlaps {
+                Some(NcwOverlaps::new(key, &supp))
+            } else {
+                None
+            };
             Some(Self {
                 df,
                 supp,
                 odd_check_nodes,
+                overlaps,
             })
         } else {
             None
@@ -234,7 +244,7 @@ mod tests {
             481,527,558,662,724,772,1008,1011,1038,1072]}"#,
         )
         .unwrap();
-        AbsorbingDecodingFailure::new(df).unwrap();
+        AbsorbingDecodingFailure::new(df, false).unwrap();
     }
 
     #[test]
@@ -245,6 +255,6 @@ mod tests {
             157,1096,849,503,996,533,1004,564,991,858,916]}"#,
         )
         .unwrap();
-        assert!(AbsorbingDecodingFailure::new(df).is_none());
+        assert!(AbsorbingDecodingFailure::new(df, false).is_none());
     }
 }

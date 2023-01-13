@@ -219,11 +219,138 @@ fn sample_2n<const WEIGHT: usize, const LENGTH: usize>(
     sum_n
 }
 
-// Cyclically shift support of vector by shift in blocks of length block_length
+fn patterns_c<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> Vec<Vec<Index>> {
+    let mut codeword = key.h1().support().to_vec();
+    let mut h0 = key.h0().support().to_vec();
+    let r = BLOCK_LENGTH as Index;
+    for entry in h0.iter_mut() {
+        *entry += r;
+    }
+    codeword.append(&mut h0);
+    vec![codeword]
+}
+
+fn patterns_n<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> Vec<Vec<Index>> {
+    let vec1 = key.h0().support().to_vec();
+    let mut vec2 = key.h1().support().to_vec();
+    let r = LEN as Index;
+    for entry in vec2.iter_mut() {
+        *entry += r;
+    }
+    vec![vec1, vec2]
+}
+
+fn patterns_2n<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> Vec<Vec<Index>> {
+    let n_patterns = patterns_n(key);
+    let mut patterns = Vec::with_capacity(4 * LEN);
+    let r = LEN as Index;
+    for supp1 in n_patterns.iter() {
+        for supp2 in n_patterns.iter() {
+            let mut supp2 = supp2.clone();
+            for _ in 0..r {
+                shift_blockwise(&mut supp2, 1, r);
+                let mut v = supp1.clone();
+                for entry in supp2.iter() {
+                    if let Some(index) = v.iter().position(|item| *item == *entry) {
+                        v.swap_remove(index);
+                    } else {
+                        v.push(*entry);
+                    }
+                }
+                patterns.push(v);
+            }
+        }
+    }
+    patterns
+}
+
+pub fn ncw_patterns<const WT: usize, const LEN: usize>(
+    key: &QuasiCyclic<WT, LEN>,
+    ncw_class: NearCodewordClass,
+) -> Vec<Vec<Index>> {
+    match ncw_class {
+        NearCodewordClass::C => patterns_c(key),
+        NearCodewordClass::N => patterns_n(key),
+        NearCodewordClass::TwoN => patterns_2n(key),
+    }
+}
+
+pub fn near_codeword_max_overlap(
+    supp: &[Index],
+    patterns: &[Vec<Index>],
+    block_length: usize,
+) -> usize {
+    patterns
+        .iter()
+        .map(|pattern| max_shifted_overlap_blockwise(supp, pattern, block_length))
+        .max()
+        .unwrap_or(0)
+}
+
+#[derive(Clone, Copy, Debug, Default, Getters, Serialize, Deserialize, PartialEq, Eq)]
+#[getset(get_copy = "pub")]
+pub struct NcwOverlaps {
+    c: usize,
+    n: usize,
+    two_n: usize,
+}
+
+impl NcwOverlaps {
+    pub fn new<const WT: usize, const LEN: usize>(
+        key: &QuasiCyclic<WT, LEN>,
+        supp: &[Index],
+    ) -> Self {
+        let patterns_c = ncw_patterns(key, NearCodewordClass::C);
+        let patterns_n = ncw_patterns(key, NearCodewordClass::N);
+        let patterns_2n = ncw_patterns(key, NearCodewordClass::TwoN);
+        Self {
+            c: near_codeword_max_overlap(supp, &patterns_c, LEN),
+            n: near_codeword_max_overlap(supp, &patterns_n, LEN),
+            two_n: near_codeword_max_overlap(supp, &patterns_2n, LEN),
+        }
+    }
+}
+
+/// Cyclically shifts support of vector by shift in blocks of length block_length.
 pub fn shift_blockwise(supp: &mut [Index], shift: Index, block_length: Index) {
     for idx in supp.iter_mut() {
         *idx = ((*idx + shift) % block_length) + (*idx / block_length) * block_length;
     }
+}
+
+pub fn relative_shifts_blockwise(
+    supp1: &[Index],
+    supp2: &[Index],
+    block_length: Index,
+) -> Vec<Index> {
+    let mut shifts = Vec::with_capacity(supp1.len() * supp2.len());
+    for idx1 in supp1 {
+        let block = idx1 / block_length;
+        let length_plus_idx1 = block_length + idx1;
+        for idx2 in supp2 {
+            if idx2 / block_length == block {
+                shifts.push(if idx1 < idx2 {
+                    length_plus_idx1 - idx2
+                } else {
+                    idx1 - idx2
+                });
+            }
+        }
+    }
+    shifts
+}
+
+pub fn max_shifted_overlap_blockwise(
+    supp1: &[Index],
+    supp2: &[Index],
+    block_length: usize,
+) -> usize {
+    let shifts = relative_shifts_blockwise(supp1, supp2, block_length as Index);
+    let mut shift_counts = vec![0; block_length];
+    for shift in shifts {
+        shift_counts[shift as usize] += 1;
+    }
+    shift_counts.into_iter().max().unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -235,5 +362,56 @@ mod tests {
         let mut supp = [2, 3, 5, 7, 11, 13, 17, 19];
         shift_blockwise(&mut supp, 4, 7);
         assert_eq!(supp, [6, 0, 2, 11, 8, 10, 14, 16]);
+    }
+
+    #[test]
+    fn blockwise_shifted_overlap() {
+        let supp = [130, 351, 527, 541];
+        let key = Key::from_support(
+            [
+                0, 11, 14, 53, 69, 134, 190, 213, 218, 245, 378, 408, 411, 480, 545,
+            ],
+            [
+                26, 104, 110, 137, 207, 252, 258, 310, 326, 351, 367, 459, 461, 506, 570,
+            ],
+        )
+        .unwrap();
+        let patterns = ncw_patterns(&key, NearCodewordClass::C);
+        let shifts = relative_shifts_blockwise(&supp, &patterns[0], 587);
+        assert_eq!(
+            shifts,
+            vec![
+                104, 26, 20, 580, 510, 465, 459, 407, 391, 366, 350, 258, 256, 211, 147, 325, 247,
+                241, 214, 144, 99, 93, 41, 25, 0, 571, 479, 477, 432, 368, 501, 423, 417, 390, 320,
+                275, 269, 217, 201, 176, 160, 68, 66, 21, 544, 515, 437, 431, 404, 334, 289, 283,
+                231, 215, 190, 174, 82, 80, 35, 558
+            ]
+        );
+        let max_overlap = near_codeword_max_overlap(&supp, &patterns, 587);
+        assert_eq!(max_overlap, 1);
+    }
+
+    #[test]
+    fn classify_example() {
+        let key = Key::from_support(
+            [
+                13, 26, 58, 68, 69, 73, 117, 133, 190, 239, 346, 483, 508, 545, 576,
+            ],
+            [
+                10, 103, 108, 141, 273, 337, 342, 343, 377, 451, 465, 473, 496, 546, 556,
+            ],
+        )
+        .unwrap();
+        let supp = [
+            7, 42, 99, 107, 114, 159, 181, 235, 274, 325, 432, 569, 575, 770, 887, 900, 945, 955,
+        ];
+        assert_eq!(
+            NcwOverlaps::new(&key, &supp),
+            NcwOverlaps {
+                c: 4,
+                n: 6,
+                two_n: 8
+            }
+        );
     }
 }

@@ -12,25 +12,34 @@ use std::{
     time::Instant,
 };
 
-// Key constants used for `enumerate` command
+// Key constants used for `enumerate` and `sample` commands
 const BLOCK_WEIGHT: usize = 5;
 const BLOCK_LENGTH: usize = 19;
 type EnumKey = QuasiCyclic<BLOCK_WEIGHT, BLOCK_LENGTH>;
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(author, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Command {
     /// Filters decoding failures received on stdin to find absorbing sets
-    Filter,
+    Filter {
+        #[arg(
+            long,
+            help = "Compute maximum overlaps with near-codeword sets C, N, and 2N"
+        )]
+        ncw: bool,
+    },
     /// Enumerates all absorbing sets of a given weight
     Enumerate {
-        #[arg(long, help = "Use the specified key (in JSON format)")]
+        #[arg(
+            long,
+            help = "Use the specified key (in JSON format) [default: random]"
+        )]
         key: Option<String>,
         #[arg(help = "Weight of absorbing sets")]
         weight: usize,
@@ -62,13 +71,13 @@ fn write_json(data: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-fn filter() -> Result<()> {
+fn filter(overlaps: bool) -> Result<()> {
     let mut de = Deserializer::from_reader(io::stdin());
     let decoding_failures = <Vec<DecodingFailure>>::deserialize(&mut de)
         .context("Failed to parse JSON input as Vec<DecodingFailure>")?;
     let absorbing: Vec<AbsorbingDecodingFailure> = decoding_failures
         .into_iter()
-        .filter_map(AbsorbingDecodingFailure::new)
+        .filter_map(|df| AbsorbingDecodingFailure::new(df, overlaps))
         .collect();
     write_json(&absorbing)
 }
@@ -142,7 +151,7 @@ fn parse_key(s: String) -> Result<EnumKey> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Filter => filter(),
+        Command::Filter { ncw } => filter(ncw),
         Command::Enumerate {
             key,
             weight,

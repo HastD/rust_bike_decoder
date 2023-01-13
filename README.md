@@ -108,3 +108,7 @@ cat results.json | jq -c .decoding_failures | absorbing filter
 The `enumerate` command exhaustively searches for absorbing sets of a given weight for a given key. The block weight and length of the key are specified at compile-time via the constants `BLOCK_WEIGHT` and `BLOCK_LENGTH` in `absorbing/src/main.rs`. The weight of the absorbing sets is a required argument; the key is either randomly generated or can be specified (in JSON format) with the `--key` argument. Results are sent in JSON format to `stdout`. The `--verbose` flag prints summary information to `stderr`; the `--parallel` flag runs the computations in parallel using multiple threads. Note that this may take a very long time if the parameters are not small.
 
 The `sample` command is similiar to `enumerate`, but randomly samples a number of times determined by the `-N` option rather than exhaustively enumerating.
+
+## Near-codeword classifier
+
+Another executable, generated at `target/release/ncw-classify`, classifies vectors into near-codeword sets. It has two subcommands: `process` and `sample`. The `process` command accepts a list of decoding failures via `stdin` and classifies each of the error vector supports. The `sample` command uses randomly generated vectors of a specified weight in place of the input.
