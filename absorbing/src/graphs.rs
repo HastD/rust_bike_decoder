@@ -1,4 +1,4 @@
-use crate::counter::Counter;
+use crate::counter::IndexCounter;
 use bike_decoder::{
     decoder::{bgf_decoder, DecodingFailure},
     keys::QuasiCyclic,
@@ -13,6 +13,7 @@ use petgraph::graph::{NodeIndex, UnGraph};
 use rand::seq::IteratorRandom;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Node {
@@ -37,6 +38,17 @@ pub struct VariableNode(pub Index);
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CheckNode(pub Index);
+
+impl TryFrom<CheckNode> for usize {
+    type Error = TryFromNodeError;
+    fn try_from(value: CheckNode) -> Result<Self, Self::Error> {
+        usize::try_from(value.0).map_err(|_| TryFromNodeError)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+#[error("node could not be converted to usize")]
+pub struct TryFromNodeError;
 
 impl From<Node> for NodeIndex {
     fn from(node: Node) -> Self {
@@ -100,23 +112,20 @@ fn subgraph_from_support<const WEIGHT: usize, const LENGTH: usize>(
 }
 
 #[inline]
-fn check_node_degrees(subgraph: &[(VariableNode, CheckNode)]) -> Counter<CheckNode> {
+fn check_node_degrees(subgraph: &[(VariableNode, CheckNode)]) -> IndexCounter {
     subgraph.iter().map(|&(_, check)| check).collect()
 }
 
 pub fn odd_check_node_neighbors<const WEIGHT: usize, const LENGTH: usize>(
     edges: &TannerGraphEdges<WEIGHT, LENGTH>,
     supp: &[Index],
-) -> (
-    Vec<(VariableNode, CheckNode)>,
-    Counter<CheckNode>,
-    Vec<CheckNode>,
-) {
+) -> (Vec<(VariableNode, CheckNode)>, IndexCounter, Vec<CheckNode>) {
     let subgraph = subgraph_from_support(edges, supp);
     let check_node_degrees = check_node_degrees(&subgraph);
     let mut odd_check_nodes: Vec<CheckNode> = check_node_degrees
         .iter()
-        .filter_map(|(&check, &count)| (count % 2 == 1).then_some(check))
+        .enumerate()
+        .filter_map(|(check, &count)| (count % 2 == 1).then_some(CheckNode(check as u32)))
         .collect();
     odd_check_nodes.sort();
     (subgraph, check_node_degrees, odd_check_nodes)
@@ -131,7 +140,7 @@ pub fn is_absorbing_subgraph<const WEIGHT: usize, const LENGTH: usize>(
     for &var in supp {
         let odd_count = edges.0[var as usize]
             .iter()
-            .filter(|(_, check)| check_node_degrees.count(check) % 2 == 1)
+            .filter(|(_, check)| check_node_degrees.count(*check) % 2 == 1)
             .count();
         if odd_count >= (WEIGHT + 1) / 2 {
             return false;
