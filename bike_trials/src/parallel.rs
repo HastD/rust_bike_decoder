@@ -95,7 +95,7 @@ pub fn record_trial_results(
         while rx_progress_open {
             match rx_progress.recv_timeout(Duration::from_millis(100)) {
                 Ok(dfr) => {
-                    application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+                    application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
                     application::write_json(settings.output(), &data)?;
                 }
                 Err(RecvTimeoutError::Timeout) => break,
@@ -110,7 +110,7 @@ pub fn record_trial_results(
     drop(rx_results);
     // Receive and handle all remaining progress updates
     for dfr in rx_progress {
-        application::handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+        application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
         application::write_json(settings.output(), &data)?;
     }
     Ok(data)

@@ -1,3 +1,4 @@
+use crate::counter::Counter;
 use bike_decoder::{
     decoder::{bgf_decoder, DecodingFailure},
     keys::QuasiCyclic,
@@ -6,7 +7,6 @@ use bike_decoder::{
     syndrome::Syndrome,
     vectors::Index,
 };
-use counter::Counter;
 use getset::Getters;
 use itertools::Itertools;
 use petgraph::graph::{NodeIndex, UnGraph};
@@ -41,7 +41,9 @@ pub struct CheckNode(pub Index);
 impl From<Node> for NodeIndex {
     fn from(node: Node) -> Self {
         Self::new(match node {
-            Node::Check(CheckNode(idx)) => idx as usize,
+            // Bitwise negate the indices for check nodes so they don't overlap
+            // with variable node indices.
+            Node::Check(CheckNode(idx)) => !(idx as usize),
             Node::Variable(VariableNode(idx)) => idx as usize,
         })
     }
@@ -127,11 +129,11 @@ pub fn is_absorbing_subgraph<const WEIGHT: usize, const LENGTH: usize>(
     let subgraph = subgraph_from_support(edges, supp);
     let check_node_degrees = check_node_degrees(&subgraph);
     for &var in supp {
-        let even_count = 1 + &edges.0[var as usize]
+        let odd_count = edges.0[var as usize]
             .iter()
-            .filter(|(_, check)| *check_node_degrees.get(check).unwrap_or(&0) % 2 == 0)
+            .filter(|(_, check)| check_node_degrees.count(check) % 2 == 1)
             .count();
-        if even_count <= (WEIGHT + 1) / 2 {
+        if odd_count >= (WEIGHT + 1) / 2 {
             return false;
         }
     }

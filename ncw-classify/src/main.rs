@@ -71,12 +71,6 @@ fn sample(key: Option<Key>, error_weight: usize, samples: usize, parallel: bool)
     Ok(())
 }
 
-fn parse_key(s: String) -> Result<Key> {
-    let key: Key =
-        serde_json::from_str::<Key>(&s).context("--key should be valid JSON representing a key")?;
-    Ok(key)
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -86,7 +80,11 @@ fn main() -> Result<()> {
             weight,
             number,
         } => {
-            let key = key.map(parse_key).transpose()?;
+            let key = key
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .context("--key should be valid JSON representing a key")?;
             sample(key, weight, number as usize, cli.parallel)
         }
     }

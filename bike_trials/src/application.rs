@@ -199,7 +199,7 @@ pub fn handle_progress(
     data: &mut DataRecord,
     settings: &Settings,
     runtime: Duration,
-) -> Result<()> {
+) {
     data.add_results(dfr);
     data.set_runtime(runtime);
     if settings.parallel() {
@@ -213,7 +213,6 @@ pub fn handle_progress(
             runtime.as_secs_f64()
         );
     }
-    Ok(())
 }
 
 pub fn run(settings: &Settings) -> Result<DataRecord> {
@@ -241,7 +240,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
         }
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
-        handle_progress(dfr, &mut data, settings, start_time.elapsed())?;
+        handle_progress(dfr, &mut data, settings, start_time.elapsed());
         write_json(settings.output(), &data)?;
         trials_remaining -= new_trials;
     }

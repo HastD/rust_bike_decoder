@@ -6,10 +6,10 @@ description = "Analysis of absorbing sets for QC-MDPC codes"
 license = "MIT"
 
 [dependencies]
+ahash = "0.8.2"
 anyhow = "1.0.68"
 bike_decoder = { path = "../bike_decoder" }
 clap = { version = "4.0.32", features = ["derive"] }
-counter = "0.5.7"
 getset = "0.1.2"
 itertools = "0.10.5"
 num-integer = "0.1.45"
