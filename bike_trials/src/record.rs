@@ -6,10 +6,7 @@ use bike_decoder::{
     threshold::{bf_masked_threshold, bf_threshold_min},
 };
 use getset::{CopyGetters, Getters, Setters};
-use serde::{
-    de::{Error, Unexpected},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
 
@@ -142,18 +139,48 @@ where
     ser.serialize_str(&secs_str)
 }
 
-fn deserialize_duration<'de, D>(de: D) -> Result<Duration, D::Error>
+struct DurationVisitor;
+
+impl<'de> de::Visitor<'de> for DurationVisitor {
+    type Value = Duration;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a duration in seconds (as string or floating-point)")
+    }
+
+    fn visit_f64<E>(self, secs: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Duration::try_from_secs_f64(secs).map_err(E::custom)
+    }
+
+    fn visit_str<E>(self, secs_str: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let secs = secs_str.parse::<f64>().map_err(|_| {
+            E::invalid_type(
+                de::Unexpected::Str(secs_str),
+                &"a string containing a valid float literal",
+            )
+        })?;
+        self.visit_f64(secs)
+    }
+
+    fn visit_u64<E>(self, secs: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Duration::from_secs(secs))
+    }
+}
+
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let secs_str = String::deserialize(de)?;
-    let secs = secs_str.parse::<f64>().map_err(|_| {
-        D::Error::invalid_type(
-            Unexpected::Str(&secs_str),
-            &"a string containing a valid float literal",
-        )
-    })?;
-    Duration::try_from_secs_f64(secs).map_err(D::Error::custom)
+    deserializer.deserialize_any(DurationVisitor)
 }
 
 #[cfg(test)]
