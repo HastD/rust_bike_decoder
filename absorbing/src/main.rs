@@ -1,3 +1,4 @@
+mod counter;
 pub mod graphs;
 
 use crate::graphs::AbsorbingDecodingFailure;
@@ -105,8 +106,8 @@ fn enumerate(
             absorbing.len(),
             error_weight,
         );
-        let total = binomial(2 * BLOCK_LENGTH, error_weight);
         if !absorbing.is_empty() {
+            let total = binomial(2 * BLOCK_LENGTH, error_weight);
             eprintln!(
                 "(1 in {} error vectors of weight {} are absorbing.)",
                 (total as f64 / absorbing.len() as f64).round() as usize,

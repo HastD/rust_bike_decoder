@@ -53,10 +53,10 @@ pub struct TryFromNodeError;
 impl From<Node> for NodeIndex {
     fn from(node: Node) -> Self {
         Self::new(match node {
-            // Bitwise negate the indices for check nodes so they don't overlap
-            // with variable node indices.
-            Node::Check(CheckNode(idx)) => !(idx as usize),
-            Node::Variable(VariableNode(idx)) => idx as usize,
+            Node::Check(CheckNode(idx)) => idx as usize,
+            // Bitwise negate the indices for variable nodes so they don't overlap
+            // with check node indices.
+            Node::Variable(VariableNode(idx)) => !(idx as usize),
         })
     }
 }
