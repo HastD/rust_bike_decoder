@@ -5,7 +5,7 @@ use crate::graphs::AbsorbingDecodingFailure;
 use anyhow::{Context, Result};
 use bike_decoder::{decoder::DecodingFailure, keys::QuasiCyclic};
 use clap::{Parser, Subcommand};
-use num_integer::binomial;
+use malachite::num::arithmetic::traits::CheckedBinomialCoefficient;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
@@ -107,12 +107,14 @@ fn enumerate(
             error_weight,
         );
         if !absorbing.is_empty() {
-            let total = binomial(2 * BLOCK_LENGTH, error_weight);
-            eprintln!(
-                "(1 in {} error vectors of weight {} are absorbing.)",
-                (total as f64 / absorbing.len() as f64).round() as usize,
-                error_weight
-            );
+            if let Some(total) = usize::checked_binomial_coefficient(2 * BLOCK_LENGTH, error_weight)
+            {
+                eprintln!(
+                    "(1 in {} error vectors of weight {} are absorbing.)",
+                    (total as f64 / absorbing.len() as f64).round() as usize,
+                    error_weight
+                );
+            }
         }
     }
     write_json(&key)?;
@@ -127,9 +129,11 @@ fn sample(
     verbose: bool,
     parallel: bool,
 ) -> Result<()> {
-    if samples >= binomial(2 * BLOCK_LENGTH, error_weight) {
-        eprintln!("Number of samples >= total number of candidates; enumerating instead.");
-        return enumerate(key, error_weight, verbose, parallel);
+    if let Some(binom) = usize::checked_binomial_coefficient(2 * BLOCK_LENGTH, error_weight) {
+        if samples >= binom {
+            eprintln!("Number of samples >= total number of candidates; enumerating instead.");
+            return enumerate(key, error_weight, verbose, parallel);
+        }
     }
     let key = key.unwrap_or_else(|| EnumKey::random(&mut rand::thread_rng()));
     let time = Instant::now();

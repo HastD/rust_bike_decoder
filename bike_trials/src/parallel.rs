@@ -41,7 +41,6 @@ pub fn trial_loop(
 ) -> Result<()> {
     let mut trials_remaining = settings.num_trials();
     while trials_remaining > 0 {
-        let tx_results = tx_results.clone();
         let new_trials = settings.save_frequency().min(trials_remaining);
         let new_failure_count = pool.install(|| {
             (0..new_trials)

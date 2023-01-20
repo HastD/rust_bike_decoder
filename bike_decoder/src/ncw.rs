@@ -347,10 +347,13 @@ pub fn max_shifted_overlap_blockwise(
 ) -> usize {
     let shifts = relative_shifts_blockwise(supp1, supp2, block_length as Index);
     let mut shift_counts = vec![0; block_length];
+    let mut max_shift_count = 0;
     for shift in shifts {
-        shift_counts[shift as usize] += 1;
+        let entry = &mut shift_counts[shift as usize];
+        *entry += 1;
+        max_shift_count = max_shift_count.max(*entry);
     }
-    shift_counts.into_iter().max().unwrap_or(0)
+    max_shift_count
 }
 
 #[cfg(test)]

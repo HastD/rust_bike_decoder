@@ -102,7 +102,7 @@ pub fn group_threshold(c: &mut Criterion) {
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
         b.iter(|| {
-            let x = compute_x(r, d, t).unwrap();
+            let x = compute_x(r, d, t);
             for ws in 0..=r {
                 black_box(exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
             }

@@ -1,4 +1,8 @@
-use num::{integer::binomial, BigInt, BigRational, ToPrimitive};
+use malachite::{
+    num::{arithmetic::traits::BinomialCoefficient, conversion::traits::RoundingInto},
+    rounding_modes::RoundingMode,
+    Natural, Rational,
+};
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -10,7 +14,7 @@ pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
 });
 
 pub fn build_threshold_cache(r: usize, d: usize, t: usize) -> Result<Vec<u8>, ThresholdError> {
-    let x = compute_x(r, d, t)?;
+    let x = compute_x(r, d, t);
     let mut threshold_cache: Vec<u8> = Vec::with_capacity(r + 1);
     for ws in 0..=r {
         threshold_cache.push(exact_threshold_ineq(ws, r, d, t, Some(x))?);
@@ -28,37 +32,29 @@ pub const fn bf_masked_threshold(block_weight: usize) -> u8 {
     ((block_weight + 1) / 2 + 1) as u8
 }
 
-fn big_binomial(n: usize, k: usize) -> BigInt {
-    binomial(BigInt::from(n), BigInt::from(k))
+fn big_binomial(n: usize, k: usize) -> Natural {
+    Natural::binomial_coefficient(Natural::from(n), Natural::from(k))
 }
 
-pub fn compute_x(r: usize, d: usize, t: usize) -> Result<f64, ThresholdError> {
+pub fn compute_x(r: usize, d: usize, t: usize) -> f64 {
     let n = 2 * r;
     let w = 2 * d;
     let n_minus_w = n - w;
-    let mut x_part = BigInt::from(0);
+    let mut x_part = Natural::default();
     for l in (3..t.min(w)).step_by(2) {
-        x_part += (l - 1) * big_binomial(w, l) * big_binomial(n_minus_w, t - l);
+        x_part += Natural::from(l - 1) * big_binomial(w, l) * big_binomial(n_minus_w, t - l);
     }
-    let x = BigRational::new(r * x_part, big_binomial(n, t)).to_f64();
-    let err = ThresholdError::XError;
-    x.ok_or(err)
-        .and_then(|x| if x.is_finite() { Ok(x) } else { Err(err) })
+    Rational::from_naturals(Natural::from(r) * x_part, big_binomial(n, t))
+        .rounding_into(RoundingMode::Nearest)
 }
 
-fn threshold_constants(
-    ws: usize,
-    r: usize,
-    d: usize,
-    t: usize,
-    x: Option<f64>,
-) -> Result<(f64, f64), ThresholdError> {
+fn threshold_constants(ws: usize, r: usize, d: usize, t: usize, x: Option<f64>) -> (f64, f64) {
     let n = 2 * r;
     let w = 2 * d;
-    let x = x.map_or_else(|| compute_x(r, d, t), Ok)?;
+    let x = x.unwrap_or_else(|| compute_x(r, d, t));
     let pi1 = (ws as f64 + x) / (t * d) as f64;
     let pi0 = ((w * ws) as f64 - x) / ((n - t) * d) as f64;
-    Ok((pi0, pi1))
+    (pi0, pi1)
 }
 
 pub fn exact_threshold_ineq(
@@ -74,7 +70,7 @@ pub fn exact_threshold_ineq(
         return Err(ThresholdError::WeightError(ws, r));
     }
     let n = 2 * r;
-    let (pi0, pi1) = threshold_constants(ws, r, d, t, x)?;
+    let (pi0, pi1) = threshold_constants(ws, r, d, t, x);
     let mut threshold: i32 = 1;
     let di = d as i32;
     while threshold <= di
@@ -102,7 +98,7 @@ pub fn exact_threshold(
         return Err(ThresholdError::WeightError(ws, r));
     }
     let n = 2 * r;
-    let (pi0, pi1) = threshold_constants(ws, r, d, t, x)?;
+    let (pi0, pi1) = threshold_constants(ws, r, d, t, x);
 
     let log_frac = ((1.0 - pi0) / (1.0 - pi1)).log2();
     let thresh_num = (((n - t) / t) as f64).log2() + d as f64 * log_frac;
@@ -120,8 +116,6 @@ pub fn exact_threshold(
 
 #[derive(Copy, Clone, Debug, Error)]
 pub enum ThresholdError {
-    #[error("Threshold constant X must be finite")]
-    XError,
     #[error("Syndrome weight ({0}) cannot be greater than block length ({1})")]
     WeightError(usize, usize),
     #[error("Computed threshold exceeds maximum supported value {}", u8::MAX)]
@@ -138,7 +132,7 @@ mod tests {
     fn known_x() {
         let (r, d, t) = (587, 15, 18);
         let x_known: f64 = 10.2859814049302;
-        let x_computed = compute_x(r, d, t).unwrap();
+        let x_computed = compute_x(r, d, t);
         assert!((x_known - x_computed).abs() < 1e-9);
     }
 
@@ -170,7 +164,7 @@ mod tests {
             1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
             1, 1, 1, 1, 1, 1, 1, 1, 1,
         ];
-        let x = compute_x(r, d, t).unwrap();
+        let x = compute_x(r, d, t);
         for ws in 0..=r {
             let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
             assert_eq!(thresh, thresholds_no_min[ws].max(bf_threshold_min(d)));

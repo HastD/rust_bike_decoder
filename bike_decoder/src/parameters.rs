@@ -13,8 +13,8 @@ pub const SIZE_AVX: usize = ((BLOCK_LENGTH * 8) + (256 * 16 - 1)) / (256 * 16) *
 
 #[allow(dead_code, clippy::all)]
 const fn compile_time_assertions() {
-    const _: () = assert!(BLOCK_WEIGHT < BLOCK_LENGTH);
-    const _: () = assert!(ERROR_WEIGHT < BLOCK_LENGTH);
+    const _: () = assert!(0 < BLOCK_WEIGHT && BLOCK_WEIGHT < BLOCK_LENGTH);
+    const _: () = assert!(0 < ERROR_WEIGHT && ERROR_WEIGHT < BLOCK_LENGTH);
     const _: () = assert!((BLOCK_WEIGHT + 1) / 2 + 1 <= u8::MAX as usize);
     const _: () = assert!(BLOCK_LENGTH < SIZE_AVX);
     const _: () = assert!(2 * SIZE_AVX < usize::MAX);

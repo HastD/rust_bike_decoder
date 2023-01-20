@@ -229,7 +229,7 @@ pub fn bf_masked_iter(
 fn multiply_avx2(output: &mut [u8], sparse: &[u32], dense: &[bool], block_length: usize) {
     use safe_arch::{add_i8_m256i, zeroed_m256i};
     const AVX_BUFF_LEN: usize = 8;
-    let dense = bytemuck::cast_slice::<bool, u8>(dense);
+    let dense: &[u8] = bytemuck::cast_slice(dense);
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
     for i in (0..block_length / 32).step_by(AVX_BUFF_LEN) {
@@ -239,19 +239,12 @@ fn multiply_avx2(output: &mut [u8], sparse: &[u32], dense: &[bool], block_length
             for k in 0..AVX_BUFF_LEN {
                 // add offset block of dense vector to buffer
                 let dense_slice = &dense[offset + 32 * k..offset + 32 * k + 32];
-                buffer[k] = add_i8_m256i(
-                    buffer[k],
-                    <[u8; 32]>::try_from(dense_slice)
-                        .expect("Slice should have length 32")
-                        .into(),
-                );
+                buffer[k] = add_i8_m256i(buffer[k], bytemuck::pod_read_unaligned(dense_slice));
             }
         }
-        for k in 0..AVX_BUFF_LEN {
-            // copy buffer contents to appropriate address in output vector
-            let output_slice = &mut output[32 * (i + k)..32 * (i + k) + 32];
-            output_slice.copy_from_slice(&<[u8; 32]>::from(buffer[k]));
-        }
+        // copy buffer contents to output slice
+        let output_slice = &mut output[32 * i..32 * i + 32 * AVX_BUFF_LEN];
+        output_slice.copy_from_slice(bytemuck::cast_slice(&buffer[..]));
     }
 }
 
