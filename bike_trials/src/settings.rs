@@ -64,7 +64,7 @@ pub struct Args {
     seed: Option<String>,
     #[arg(long, conflicts_with_all=["parallel", "threads"],
         help="Initialize PRNG to match specified thread index (single-threaded only)")]
-    seed_index: Option<usize>,
+    seed_index: Option<u32>,
     #[arg(long, help = "Set number of threads (ignores --parallel)")]
     threads: Option<usize>,
     #[arg(short, long, action = clap::ArgAction::Count,
@@ -92,7 +92,7 @@ pub struct Settings {
     seed: Option<Seed>,
     #[builder(default)]
     #[getset(get_copy = "pub")]
-    seed_index: Option<usize>,
+    seed_index: Option<u32>,
     #[builder(default = "1")]
     #[getset(get_copy = "pub")]
     threads: usize,
@@ -135,7 +135,12 @@ impl Settings {
                 .map(Seed::try_from)
                 .transpose()
                 .context("--seed should be 256-bit hex string")?,
-            seed_index: args.seed_index,
+            seed_index: args.seed_index.map(|seed_idx| {
+                if seed_idx >= 1 << 24 {
+                    eprintln!("Warning: very large PRNG seed index will be slow to initialize.");
+                }
+                seed_idx
+            }),
             // Default if --threads not specified:
             // * If --parallel flag not set, settings.threads = 1
             // * If --parallel flag set, settings.threads = 0, which tells

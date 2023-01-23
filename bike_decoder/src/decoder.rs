@@ -49,7 +49,7 @@ pub struct DecodingFailure {
     #[serde(flatten)]
     #[getset(get = "pub")]
     vector: TaggedErrorVector,
-    pub thread: Option<usize>,
+    pub thread: Option<u32>,
 }
 
 impl From<DecodingFailure> for DecodingResult {

@@ -44,7 +44,7 @@ pub struct DataRecord {
     )]
     runtime: Duration,
     #[getset(get_copy = "pub", set = "pub")]
-    thread_count: Option<usize>,
+    thread_count: Option<u32>,
 }
 
 impl DataRecord {

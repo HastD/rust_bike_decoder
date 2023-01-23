@@ -175,12 +175,7 @@ pub(crate) fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> Stri
     )
 }
 
-pub fn handle_decoding_failure(
-    mut df: DecodingFailure,
-    thread_id: usize,
-    data: &mut DataRecord,
-    settings: &Settings,
-) {
+pub fn handle_decoding_failure(df: DecodingFailure, data: &mut DataRecord, settings: &Settings) {
     if data.decoding_failures().len() < settings.record_max() {
         if settings.verbose() >= 3 {
             eprintln!("Decoding failure found!");
@@ -189,7 +184,6 @@ pub fn handle_decoding_failure(
                 eprintln!("Maximum number of decoding failures recorded.");
             }
         }
-        df.thread = Some(thread_id);
         data.push_decoding_failure(df);
     }
 }
@@ -233,9 +227,10 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
         let new_trials = settings.save_frequency().min(trials_remaining);
         for _ in 0..new_trials {
             let result = decoding_failure_trial(settings.trial_settings(), &mut rng);
-            if let Some(df) = result {
+            if let Some(mut df) = result {
                 new_failure_count += 1;
-                handle_decoding_failure(df, seed_index, &mut data, settings);
+                df.thread = Some(seed_index);
+                handle_decoding_failure(df, &mut data, settings);
             }
         }
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)

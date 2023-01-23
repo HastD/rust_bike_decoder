@@ -22,10 +22,10 @@ fn receive_decoding_failure() {
     let (tx, rx) = channel();
     let mut rng = random::custom_thread_rng();
     parallel::trial_iteration(&settings, &tx, &mut rng);
-    let (_result, thread_id) = rx
+    let result = rx
         .recv_timeout(Duration::from_secs(1))
         .expect("Should receive decoding failure in under 1 second");
-    assert_eq!(thread_id, random::current_thread_id())
+    assert_eq!(result.thread.unwrap(), random::current_thread_id());
 }
 
 #[test]

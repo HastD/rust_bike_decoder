@@ -75,7 +75,7 @@ pub fn group_record(c: &mut Criterion) {
             },
             |rx| {
                 rx.iter()
-                    .for_each(|result| handle_decoding_failure(result, 0, &mut data, &settings))
+                    .for_each(|result| handle_decoding_failure(result, &mut data, &settings))
             },
             BatchSize::SmallInput,
         )

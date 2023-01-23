@@ -3,7 +3,7 @@
 // This is a modified version of the implementation of rand::ThreadRng,
 // suitable for applications where reproducibility of the results is desired.
 
-use rand::{rngs::OsRng, Error, RngCore, SeedableRng};
+use rand::{rngs::OsRng, RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,7 +11,7 @@ use std::{
     fmt,
     rc::Rc,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU32, Ordering},
         Mutex,
     },
     thread_local,
@@ -19,10 +19,12 @@ use std::{
 use thiserror::Error;
 
 static GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
-static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+static GLOBAL_THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
 
 thread_local! {
-    static CURRENT_THREAD_ID: usize = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::AcqRel);
+    // Relaxed ordering is appropriate since we just need the IDs to be unique;
+    // it doesn't matter what order they're assigned in.
+    static CURRENT_THREAD_ID: u32 = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
     static CUSTOM_THREAD_RNG_KEY: Rc<UnsafeCell<Xoshiro256PlusPlus>> = {
         let seed = get_or_insert_global_seed(None);
         let rng = get_rng_from_seed(seed, current_thread_id());
@@ -30,7 +32,7 @@ thread_local! {
     }
 }
 
-pub fn get_rng_from_seed(seed: Seed, jumps: usize) -> Xoshiro256PlusPlus {
+pub fn get_rng_from_seed(seed: Seed, jumps: u32) -> Xoshiro256PlusPlus {
     let mut rng = Xoshiro256PlusPlus::from_seed(seed.into());
     for _ in 0..jumps {
         rng.jump();
@@ -64,11 +66,11 @@ pub fn try_insert_global_seed(seed: Option<Seed>) -> Result<Seed, TryInsertGloba
 #[error("try_insert_global_seed failed, GLOBAL_SEED already set to value: {0}")]
 pub struct TryInsertGlobalSeedError(Seed);
 
-pub fn global_thread_count() -> usize {
-    GLOBAL_THREAD_COUNT.load(Ordering::Acquire)
+pub fn global_thread_count() -> u32 {
+    GLOBAL_THREAD_COUNT.load(Ordering::Relaxed)
 }
 
-pub fn current_thread_id() -> usize {
+pub fn current_thread_id() -> u32 {
     CURRENT_THREAD_ID.with(|x| *x)
 }
 
@@ -118,7 +120,7 @@ impl RngCore for CustomThreadRng {
         rng.fill_bytes(dest)
     }
 
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
         // SAFETY: self.rng is !Sync, hence can't be concurrently mutated. No
         // other references to self.rng exist because we never give any out.
         let rng = unsafe { &mut *self.rng.get() };
