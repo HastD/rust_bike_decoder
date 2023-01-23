@@ -5,7 +5,7 @@ use bike_decoder::{
     parameters::*,
     random::custom_thread_rng,
     syndrome::Syndrome,
-    threshold::{compute_x, exact_threshold_ineq},
+    threshold::build_threshold_cache,
     vectors::SparseErrorVector,
 };
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
@@ -101,12 +101,13 @@ pub fn group_syndrome(c: &mut Criterion) {
 pub fn group_threshold(c: &mut Criterion) {
     c.bench_function("threshold", |b| {
         let (r, d, t) = (BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT);
-        b.iter(|| {
-            let x = compute_x(r, d, t);
-            for ws in 0..=r {
-                black_box(exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap());
-            }
-        })
+        b.iter(|| black_box(build_threshold_cache(r, d, t)))
+    });
+
+    c.bench_function("big threshold", |b| {
+        // BIKE security level 5 parameters
+        let (r, d, t) = (40_973, 137, 264);
+        b.iter(|| black_box(build_threshold_cache(r, d, t)))
     });
 }
 
