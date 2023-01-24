@@ -68,14 +68,20 @@ pub fn record_trial_results(
     rx_progress: Receiver<DecodingFailureRatio>,
     start_time: Instant,
 ) -> Result<DataRecord> {
+    const CONSECUTIVE_RESULTS_MAX: u32 = 10_000;
+    const TIMEOUT: Duration = Duration::from_millis(100);
+    const CONSECUTIVE_PROGRESS_MAX: u32 = 100;
     let seed = get_or_insert_global_seed(settings.seed());
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     let mut rx_results_open = true;
     let mut rx_progress_open = true;
+    let mut consecutive_results_handled;
+    let mut consecutive_progress_handled;
     // Alternate between handling decoding failures and handling progress updates
     'outer: while rx_results_open || rx_progress_open {
-        // Handle all decoding failures currently in channel, then continue
-        while rx_results_open {
+        consecutive_results_handled = 0;
+        // Handle decoding failures currently in channel, then continue
+        while rx_results_open && consecutive_results_handled < CONSECUTIVE_RESULTS_MAX {
             match rx_results.try_recv() {
                 Ok(df) => {
                     application::handle_decoding_failure(df, &mut data, settings);
@@ -83,6 +89,7 @@ pub fn record_trial_results(
                         // Max number of decoding failures recorded, short-circuit outer loop
                         break 'outer;
                     }
+                    consecutive_results_handled += 1;
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
@@ -91,12 +98,19 @@ pub fn record_trial_results(
                 }
             }
         }
+        let timeout = if consecutive_results_handled >= CONSECUTIVE_RESULTS_MAX {
+            // Likely still decoding failures waiting to be handled, so skip delay
+            Duration::ZERO
+        } else {
+            TIMEOUT
+        };
+        consecutive_progress_handled = 0;
         // Handle all progress updates currently in channel, then continue (w/ timeout delay)
-        while rx_progress_open {
-            match rx_progress.recv_timeout(Duration::from_millis(100)) {
+        while rx_progress_open && consecutive_progress_handled < CONSECUTIVE_PROGRESS_MAX {
+            match rx_progress.recv_timeout(timeout) {
                 Ok(dfr) => {
                     application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-                    application::write_json(settings.output(), &data)?;
+                    consecutive_progress_handled += 1;
                 }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
@@ -105,12 +119,24 @@ pub fn record_trial_results(
                 }
             }
         }
+        if consecutive_progress_handled >= 1 {
+            application::write_json(settings.output(), &data)?;
+        }
     }
     // Drops the results receiver so no more decoding failures are handled
     drop(rx_results);
     // Receive and handle all remaining progress updates
-    for dfr in rx_progress {
+    while let Ok(dfr) = rx_progress.recv() {
         application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
+        consecutive_progress_handled = 1;
+        // Handle any backlog of progress updates before writing
+        while let Ok(dfr) = rx_progress.recv_timeout(TIMEOUT) {
+            application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
+            consecutive_progress_handled += 1;
+            if consecutive_progress_handled >= CONSECUTIVE_PROGRESS_MAX {
+                break;
+            }
+        }
         application::write_json(settings.output(), &data)?;
     }
     Ok(data)
@@ -123,7 +149,7 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     }
     application::check_writable(settings.output(), settings.overwrite())?;
     // Set global PRNG seed used for generating data
-    try_insert_global_seed(settings.seed())
+    let seed = try_insert_global_seed(settings.seed())
         .context("Must be able to set global seed to user-specified seed")?;
     // Set up channels to receive decoding results and progress updates
     let (tx_results, rx_results) = channel();
@@ -138,7 +164,8 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
         Ok(())
     });
     // Process messages from trial_loop
-    let data = record_trial_results(settings, rx_results, rx_progress, start_time)?;
+    let data = record_trial_results(settings, rx_results, rx_progress, start_time)
+        .context(format!("Data processing error [seed = {seed}]"))?;
     // Propagate any errors or panics from thread
     trial_thread
         .join()
