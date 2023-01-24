@@ -67,8 +67,9 @@ pub fn record_trial_results(
     start_time: Instant,
 ) -> Result<DataRecord> {
     const CONSECUTIVE_RESULTS_MAX: u32 = 10_000;
-    const TIMEOUT: Duration = Duration::from_millis(100);
     const CONSECUTIVE_PROGRESS_MAX: u32 = 100;
+    const PROGRESS_TIMEOUT: Duration = Duration::from_millis(100);
+    const PROGRESS_WAIT_TIME: Duration = Duration::from_secs(10);
     let seed = get_or_insert_global_seed(settings.seed());
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     let mut rx_results_open = true;
@@ -100,7 +101,7 @@ pub fn record_trial_results(
             // Likely still decoding failures waiting to be handled, so skip delay
             Duration::ZERO
         } else {
-            TIMEOUT
+            PROGRESS_TIMEOUT
         };
         consecutive_progress_handled = 0;
         // Handle all progress updates currently in channel, then continue (w/ timeout delay)
@@ -125,15 +126,11 @@ pub fn record_trial_results(
     drop(rx_results);
     // Receive and handle all remaining progress updates
     while let Ok(dfr) = rx_progress.recv() {
-        application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-        consecutive_progress_handled = 1;
-        // Handle any backlog of progress updates before writing
-        while let Ok(dfr) = rx_progress.recv_timeout(TIMEOUT) {
+        let now = Instant::now();
+        application::handle_progress(dfr, &mut data, settings, now - start_time);
+        // Handle backlog and wait a little for more updates before writing
+        while let Ok(dfr) = rx_progress.recv_deadline(now + PROGRESS_WAIT_TIME) {
             application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-            consecutive_progress_handled += 1;
-            if consecutive_progress_handled >= CONSECUTIVE_PROGRESS_MAX {
-                break;
-            }
         }
         application::write_json(settings.output(), &data)?;
     }
