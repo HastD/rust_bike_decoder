@@ -35,23 +35,21 @@ pub fn trial_iteration<R: Rng + ?Sized>(
 // Runs decoding_trial in a loop, sending decoding failures via tx_results and
 // progress updates (counts of decoding failures and trials run) via tx_progress.
 pub fn trial_loop(
-    settings: &Settings,
+    settings: &TrialSettings,
+    num_trials: u64,
+    save_frequency: u64,
     tx_results: &Sender<DecodingFailure>,
     tx_progress: &Sender<DecodingFailureRatio>,
-    pool: rayon::ThreadPool,
 ) -> Result<()> {
-    let mut trials_remaining = settings.num_trials();
+    let mut trials_remaining = num_trials;
     while trials_remaining > 0 {
-        let new_trials = settings.save_frequency().min(trials_remaining);
-        let new_failure_count = pool.install(|| {
-            (0..new_trials)
-                .into_par_iter()
-                .map_with(
-                    (settings.trial_settings(), tx_results),
-                    |(settings, tx), _| trial_iteration(settings, tx, &mut custom_thread_rng()),
-                )
-                .sum()
-        });
+        let new_trials = save_frequency.min(trials_remaining);
+        let new_failure_count = (0..new_trials)
+            .into_par_iter()
+            .map_with((settings, tx_results), |(settings, tx), _| {
+                trial_iteration(settings, tx, &mut custom_thread_rng())
+            })
+            .sum();
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
         tx_progress
@@ -156,16 +154,24 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     let (tx_progress, rx_progress) = channel();
     let settings_clone = settings.clone();
     // Start main trial loop in separate thread
-    let trial_thread = std::thread::spawn(move || -> Result<()> {
+    let trial_thread = std::thread::spawn(move || {
+        let settings = settings_clone;
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(settings_clone.threads())
+            .num_threads(settings.threads())
             .build()?;
-        trial_loop(&settings_clone, &tx_results, &tx_progress, pool)?;
-        Ok(())
+        pool.install(|| {
+            trial_loop(
+                settings.trial_settings(),
+                settings.num_trials(),
+                settings.save_frequency(),
+                &tx_results,
+                &tx_progress,
+            )
+        })
     });
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)
-        .context(format!("Data processing error [seed = {seed}]"))?;
+        .with_context(|| format!("Data processing error [seed = {seed}]"))?;
     // Propagate any errors or panics from thread
     trial_thread
         .join()
