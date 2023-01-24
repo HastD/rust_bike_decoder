@@ -144,7 +144,7 @@ impl TaggedErrorVector {
             }
         }
         let shift = rng.gen_range(0..r);
-        shift_blockwise(&mut supp, shift, r);
+        shift_blockwise::<BLOCK_LENGTH>(&mut supp, shift);
         Self {
             vector: SparseErrorVector::from_support(supp)
                 .expect("near_codeword should always produce valid vector support"),
@@ -205,7 +205,7 @@ fn sample_2n<const WEIGHT: usize, const LENGTH: usize>(
 ) -> Vec<Index> {
     let mut sum_n = sample_n(key, block_flag % 2);
     let mut supp2 = sample_n(key, (block_flag >> 1) % 2);
-    shift_blockwise(&mut supp2, shift, LENGTH as Index);
+    shift_blockwise::<LENGTH>(&mut supp2, shift);
     // Symmetric difference of supp1 and supp2
     for idx in &supp2 {
         if let Some(pos) = sum_n.iter().position(|x| *x == *idx) {
@@ -243,12 +243,11 @@ fn patterns_n<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> 
 fn patterns_2n<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> Vec<Vec<Index>> {
     let n_patterns = patterns_n(key);
     let mut patterns = Vec::with_capacity(4 * LEN);
-    let r = LEN as Index;
     for supp1 in n_patterns.iter() {
         for supp2 in n_patterns.iter() {
             let mut supp2 = supp2.clone();
-            for _ in 0..r {
-                shift_blockwise(&mut supp2, 1, r);
+            for _ in 0..LEN {
+                shift_blockwise::<LEN>(&mut supp2, 1);
                 let mut v = supp1.clone();
                 for entry in supp2.iter() {
                     if let Some(index) = v.iter().position(|item| *item == *entry) {
@@ -275,14 +274,13 @@ pub fn ncw_patterns<const WT: usize, const LEN: usize>(
     }
 }
 
-pub fn near_codeword_max_overlap(
+pub fn near_codeword_max_overlap<const LEN: usize>(
     supp: &[Index],
     patterns: &[Vec<Index>],
-    block_length: usize,
 ) -> usize {
     patterns
         .iter()
-        .map(|pattern| max_shifted_overlap_blockwise(supp, pattern, block_length))
+        .map(|pattern| max_shifted_overlap_blockwise::<LEN>(supp, pattern))
         .max()
         .unwrap_or(0)
 }
@@ -304,25 +302,23 @@ impl NcwOverlaps {
         let patterns_n = ncw_patterns(key, NearCodewordClass::N);
         let patterns_2n = ncw_patterns(key, NearCodewordClass::TwoN);
         Self {
-            c: near_codeword_max_overlap(supp, &patterns_c, LEN),
-            n: near_codeword_max_overlap(supp, &patterns_n, LEN),
-            two_n: near_codeword_max_overlap(supp, &patterns_2n, LEN),
+            c: near_codeword_max_overlap::<LEN>(supp, &patterns_c),
+            n: near_codeword_max_overlap::<LEN>(supp, &patterns_n),
+            two_n: near_codeword_max_overlap::<LEN>(supp, &patterns_2n),
         }
     }
 }
 
 /// Cyclically shifts support of vector by shift in blocks of length block_length.
-pub fn shift_blockwise(supp: &mut [Index], shift: Index, block_length: Index) {
+pub fn shift_blockwise<const LEN: usize>(supp: &mut [Index], shift: Index) {
+    let block_length = LEN as Index;
     for idx in supp.iter_mut() {
         *idx = ((*idx + shift) % block_length) + (*idx / block_length) * block_length;
     }
 }
 
-pub fn relative_shifts_blockwise(
-    supp1: &[Index],
-    supp2: &[Index],
-    block_length: Index,
-) -> Vec<Index> {
+pub fn relative_shifts_blockwise<const LEN: usize>(supp1: &[Index], supp2: &[Index]) -> Vec<Index> {
+    let block_length = LEN as Index;
     let mut shifts = Vec::with_capacity(supp1.len() * supp2.len());
     for idx1 in supp1 {
         let block = idx1 / block_length;
@@ -340,13 +336,9 @@ pub fn relative_shifts_blockwise(
     shifts
 }
 
-pub fn max_shifted_overlap_blockwise(
-    supp1: &[Index],
-    supp2: &[Index],
-    block_length: usize,
-) -> usize {
-    let shifts = relative_shifts_blockwise(supp1, supp2, block_length as Index);
-    let mut shift_counts = vec![0; block_length];
+pub fn max_shifted_overlap_blockwise<const LEN: usize>(supp1: &[Index], supp2: &[Index]) -> usize {
+    let shifts = relative_shifts_blockwise::<LEN>(supp1, supp2);
+    let mut shift_counts = [0; LEN];
     let mut max_shift_count = 0;
     for shift in shifts {
         let entry = &mut shift_counts[shift as usize];
@@ -363,7 +355,7 @@ mod tests {
     #[test]
     fn blockwise_shift() {
         let mut supp = [2, 3, 5, 7, 11, 13, 17, 19];
-        shift_blockwise(&mut supp, 4, 7);
+        shift_blockwise::<7>(&mut supp, 4);
         assert_eq!(supp, [6, 0, 2, 11, 8, 10, 14, 16]);
     }
 
@@ -380,7 +372,7 @@ mod tests {
         )
         .unwrap();
         let patterns = ncw_patterns(&key, NearCodewordClass::C);
-        let shifts = relative_shifts_blockwise(&supp, &patterns[0], 587);
+        let shifts = relative_shifts_blockwise::<587>(&supp, &patterns[0]);
         assert_eq!(
             shifts,
             vec![
@@ -390,7 +382,7 @@ mod tests {
                 231, 215, 190, 174, 82, 80, 35, 558
             ]
         );
-        let max_overlap = near_codeword_max_overlap(&supp, &patterns, 587);
+        let max_overlap = near_codeword_max_overlap::<587>(&supp, &patterns);
         assert_eq!(max_overlap, 1);
     }
 
