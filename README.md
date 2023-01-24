@@ -14,7 +14,7 @@ To compile, you will need to [install Rust](https://www.rust-lang.org/tools/inst
 cargo build --release
 ```
 
-Compile-time parameters such as the block size and weight, the error vector weight, and the number of iterations in the BGF algorithm can be set in `src/parameters.rs`. The main executable will be generated at `target/release/bike_trials`.
+Compile-time parameters such as the block size and weight, the error vector weight, and the number of iterations in the BGF algorithm are defined in `src/parameters.rs`. Different values can be set at compile-time using the environment variables `BIKE_BLOCK_LENGTH`, `BIKE_BLOCK_WEIGHT`, `BIKE_ERROR_WEIGHT`, and `BIKE_NB_ITER`. The main executable will be generated at `target/release/bike_trials`.
 
 ## Usage
 
