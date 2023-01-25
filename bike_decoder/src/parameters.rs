@@ -38,10 +38,14 @@ const fn compile_time_assertions() {
 /// defined but cannot be parsed.
 macro_rules! env_or_usize {
     ( $name:expr, $default:expr $(,)? ) => {{
-        ::konst::result::unwrap_ctx!(::konst::option::unwrap_or!(
-            ::konst::option::map!(::core::option_env!($name), ::konst::primitive::parse_usize),
-            ::core::result::Result::Ok::<::core::primitive::usize, _>($default)
-        ))
+        if let ::core::option::Option::Some(s) = ::core::option_env!($name) {
+            match ::konst::primitive::parse_usize(s) {
+                ::core::result::Result::Ok::<::core::primitive::usize, _>(value) => value,
+                ::core::result::Result::Err(err) => err.panic(),
+            }
+        } else {
+            $default
+        }
     }};
 }
 
