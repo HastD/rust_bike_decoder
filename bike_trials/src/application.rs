@@ -82,7 +82,7 @@ fn write_fallback<T>(err: Error, data: &impl Serialize) -> Result<T> {
     eprintln!("Error writing JSON data to file; dumping to stderr.");
     let json_str =
         serde_json::to_string(data).context("Fallback failed, data cannot be written")?;
-    eprintln!("{}", json_str);
+    eprintln!("{json_str}");
     Err(err)
 }
 
@@ -106,14 +106,15 @@ pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
 }
 
 pub(crate) fn start_message(settings: &Settings) -> String {
+    let num_trials = settings.num_trials();
     let parameter_message = format!(
-        "    r = {}, d = {}, t = {}, iterations = {}, tau = {}\n",
-        BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT, NB_ITER, GRAY_THRESHOLD_DIFF
+        "    r = {BLOCK_LENGTH}, d = {BLOCK_WEIGHT}, t = {ERROR_WEIGHT}, \
+        iterations = {NB_ITER}, tau = {GRAY_THRESHOLD_DIFF}\n"
     );
     let weak_key_message = match settings.key_filter() {
         KeyFilter::Any => String::new(),
         KeyFilter::NonWeak(threshold) => {
-            format!("    Testing only non-weak keys (T = {})\n", threshold)
+            format!("    Testing only non-weak keys (T = {threshold})\n")
         }
         KeyFilter::Weak(weak_type, threshold) => format!(
             "    Testing only weak keys of type {} (T = {})\n",
@@ -124,10 +125,7 @@ pub(crate) fn start_message(settings: &Settings) -> String {
         let l_str = settings
             .ncw_overlap()
             .map_or_else(|| "l".to_string(), |l| l.to_string());
-        format!(
-            "    Sampling error vectors from A_{{t,{}}}({})\n",
-            l_str, ncw_class
-        )
+        format!("    Sampling error vectors from A_{{t,{l_str}}}({ncw_class})\n")
     });
     let thread_message = if settings.parallel() {
         let thread_count = if settings.threads() == 0 {
@@ -135,17 +133,16 @@ pub(crate) fn start_message(settings: &Settings) -> String {
         } else {
             settings.threads()
         };
-        format!("[running with {} threads]\n", thread_count)
+        format!("[running with {thread_count} threads]\n")
     } else {
         String::new()
     };
     format!(
-        "Starting decoding trials (N = {}) with parameters:\n{}{}{}{}",
-        settings.num_trials(),
-        parameter_message,
-        weak_key_message,
-        ncw_message,
-        thread_message
+        "Starting decoding trials (N = {num_trials}) with parameters:\n\
+        {parameter_message}\
+        {weak_key_message}\
+        {ncw_message}\
+        {thread_message}"
     )
 }
 
@@ -153,7 +150,7 @@ pub(crate) fn end_message(dfr: &DecodingFailureRatio, runtime: Duration) -> Stri
     let avg_nanos = runtime.as_nanos() / u128::from(dfr.num_trials());
     let (avg_mcs, ns_rem) = (avg_nanos / 1000, avg_nanos % 1000);
     let avg_text = if avg_mcs >= 100 {
-        format!("{} μs", avg_mcs)
+        format!("{avg_mcs} μs")
     } else if avg_mcs >= 10 {
         format!("{}.{} μs", avg_mcs, ns_rem / 100)
     } else if avg_mcs >= 1 {

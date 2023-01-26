@@ -240,8 +240,7 @@ mod tests {
             let key = Key::random_non_weak(weak_key_threshold, &mut rng);
             assert!(
                 !key.is_weak(weak_key_threshold),
-                "Non-weak key was actually weak: {:?}",
-                key
+                "Non-weak key was actually weak: {key:?}"
             );
         }
     }
@@ -254,8 +253,7 @@ mod tests {
             let key = Key::random_weak_type1(weak_key_threshold, &mut rng);
             assert!(
                 key.is_weak(weak_key_threshold),
-                "Type 1 weak key was not actually weak: {:?}",
-                key
+                "Type 1 weak key was not actually weak: {key:?}"
             );
         }
     }
@@ -268,8 +266,7 @@ mod tests {
             let key = Key::random_weak_type2(weak_key_threshold, &mut rng);
             assert!(
                 key.is_weak(weak_key_threshold),
-                "Type 2 weak key was not actually weak: {:?}",
-                key
+                "Type 2 weak key was not actually weak: {key:?}"
             );
         }
     }
@@ -282,8 +279,7 @@ mod tests {
             let key = Key::random_weak_type3(weak_key_threshold, &mut rng);
             assert!(
                 key.is_weak(weak_key_threshold),
-                "Type 3 weak key was not actually weak: {:?}",
-                key
+                "Type 3 weak key was not actually weak: {key:?}"
             );
         }
     }

@@ -305,7 +305,7 @@ impl<const W: usize, const L: usize> fmt::Display for SparseVector<W, L> {
             .map(|idx| idx.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "[{}]", str_supp)
+        write!(f, "[{str_supp}]")
     }
 }
 
@@ -478,8 +478,7 @@ mod tests {
             let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type1(thresh, &mut rng);
             assert!(
                 v.shifts_above_threshold(thresh),
-                "Type 1 weak block was not actually weak of type 1/2: {:?}",
-                v
+                "Type 1 weak block was not actually weak of type 1/2: {v:?}"
             );
         }
     }
@@ -492,8 +491,7 @@ mod tests {
             let v = SparseVector::<BLOCK_WEIGHT, BLOCK_LENGTH>::random_weak_type2(thresh, &mut rng);
             assert!(
                 v.shifts_above_threshold(thresh),
-                "Type 2 weak block was not actually weak of type 1/2: {:?}",
-                v
+                "Type 2 weak block was not actually weak of type 1/2: {v:?}"
             );
         }
     }
