@@ -1,8 +1,8 @@
-use anyhow::{Context, Result};
 use bike_decoder::{
     keys::{FilterError, Key, KeyFilter},
     ncw::NearCodewordClass,
-    random::Seed,
+    random::{Seed, SeedFromHexError},
+    vectors::InvalidSupport,
 };
 use clap::Parser;
 use derive_builder::Builder;
@@ -108,7 +108,7 @@ impl Settings {
     const MIN_SAVE_FREQUENCY: u64 = 10000;
     const MAX_THREAD_COUNT: usize = 1024;
 
-    pub fn from_args(args: Args) -> Result<Self> {
+    pub fn from_args(args: Args) -> Result<Self, SettingsError> {
         let settings = Self {
             num_trials: args.number as u64,
             trial_settings: TrialSettings::new(
@@ -117,7 +117,7 @@ impl Settings {
                     .as_deref()
                     .map(serde_json::from_str)
                     .transpose()
-                    .context("--fixed-key should be valid JSON representing a key")?
+                    .map_err(SettingsError::UnparseableFixedKey)?
                     .map(Key::sorted),
                 args.ncw,
                 args.ncw_overlap,
@@ -129,12 +129,7 @@ impl Settings {
                 .and_then(NonZeroU64::new),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
-            seed: args
-                .seed
-                .as_deref()
-                .map(Seed::try_from)
-                .transpose()
-                .context("--seed should be 256-bit hex string")?,
+            seed: args.seed.as_deref().map(Seed::try_from).transpose()?,
             seed_index: args.seed_index.map(|seed_idx| {
                 if seed_idx >= 1 << 24 {
                     eprintln!("Warning: very large PRNG seed index will be slow to initialize.");
@@ -205,19 +200,18 @@ impl TrialSettings {
         fixed_key: Option<Key>,
         ncw_class: Option<NearCodewordClass>,
         ncw_overlap: Option<usize>,
-    ) -> Result<Self> {
+    ) -> Result<Self, SettingsError> {
         if let Some(key) = fixed_key.as_ref() {
-            key.validate()
-                .context("--fixed-key must specify valid key support")?;
+            key.validate()?;
             if !key.matches_filter(key_filter) {
-                return Err(SettingsError::InvalidFixedKey.into());
+                return Err(SettingsError::FixedKeyFilter(key_filter));
             }
         }
         if let Some(l) = ncw_overlap {
             let sample_class = ncw_class.ok_or(SettingsError::NcwDependency)?;
             let l_max = sample_class.max_l();
             if l > l_max {
-                return Err(SettingsError::NcwRange(sample_class).into());
+                return Err(SettingsError::NcwRange(sample_class));
             }
         }
         Ok(Self {
@@ -249,12 +243,21 @@ impl OutputTo {
     }
 }
 
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum SettingsError {
     #[error(transparent)]
     InvalidFilter(#[from] FilterError),
-    #[error("fixed_key does not match key filter")]
-    InvalidFixedKey,
+    #[error(
+        "--fixed-key should be valid JSON representing a key\n\n\
+        Caused by:\n    {0}"
+    )]
+    UnparseableFixedKey(serde_json::Error),
+    #[error("--fixed-key must specify valid key support")]
+    InvalidFixedKeySupport(#[from] InvalidSupport),
+    #[error("--fixed-key must match key filter {0:?}")]
+    FixedKeyFilter(KeyFilter),
+    #[error("--seed should be 256-bit hex string")]
+    InvalidSeed(#[from] SeedFromHexError),
     #[error("ncw_overlap requires ncw_class to be set")]
     NcwDependency,
     #[error("l must be in range 0..{} in A_{{t,l}}({0})", .0.max_l())]

@@ -7,18 +7,18 @@ license = "MIT"
 rust-version = "1.66"
 
 [dependencies]
-bytecount = { version = "0.6.3", features = ["runtime-dispatch-simd"] }
+bytecount = { version = "0.6", features = ["runtime-dispatch-simd"] }
 bytemuck = "1.12.3"
-clap = { version = "4.0", features = ["derive"] }
-getset = "0.1.2"
-hex = { version = "0.4.3", features = ["serde"] }
-konst = { version = "0.3.4", default-features = false, features = ["parsing"] }
+clap = { version = "4", default-features = false }
+getset = "0.1"
+hex = { version = "0.4", features = ["serde"] }
+konst = { version = "0.3", default-features = false, features = ["parsing"] }
 malachite = "0.3.2"
-once_cell = "1.16.0"
-rand = "0.8.5"
+once_cell = "1.16"
+rand = "0.8"
 rand_xoshiro = "0.6"
-safe_arch = { version = "0.6.0", features = ["bytemuck"] }
-serde = { version = "1.0", features = ["derive"] }
+safe_arch = { version = "0.6", features = ["bytemuck"] }
+serde = { version = "1", features = ["derive"] }
 serde_arrays = "0.1"
 thiserror = "1.0.38"
 

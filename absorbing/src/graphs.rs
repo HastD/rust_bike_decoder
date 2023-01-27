@@ -13,7 +13,6 @@ use petgraph::graph::{NodeIndex, UnGraph};
 use rand::seq::IteratorRandom;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Node {
@@ -39,16 +38,11 @@ pub struct VariableNode(pub Index);
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CheckNode(pub Index);
 
-impl TryFrom<CheckNode> for usize {
-    type Error = TryFromNodeError;
-    fn try_from(value: CheckNode) -> Result<Self, Self::Error> {
-        usize::try_from(value.0).map_err(|_| TryFromNodeError)
+impl From<CheckNode> for usize {
+    fn from(value: CheckNode) -> usize {
+        usize::try_from(value.0).expect("Node value should not overflow usize")
     }
 }
-
-#[derive(Clone, Copy, Debug, Error)]
-#[error("node could not be converted to usize")]
-pub struct TryFromNodeError;
 
 impl From<Node> for NodeIndex {
     fn from(node: Node) -> Self {

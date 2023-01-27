@@ -7,18 +7,18 @@ license = "MIT"
 
 [dependencies]
 bike_decoder = { path = "../bike_decoder" }
-anyhow = "1.0.67"
-clap = { version = "4.0", features = ["derive"] }
-crossbeam-channel = "0.5.6"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossbeam-channel = "0.5"
 derive_builder = "0.12"
-getset = "0.1.2"
-num_cpus = "1.14"
-rand = "0.8.5"
-rayon = "1.6.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+getset = "0.1"
+num_cpus = "1"
+rand = "0.8"
+rayon = "1.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "1.0.38"
-uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
+uuid = { version = "1.2", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
 criterion = "0.4"

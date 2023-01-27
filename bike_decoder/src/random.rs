@@ -170,9 +170,9 @@ impl fmt::Display for Seed {
 
 #[derive(Debug, Error)]
 pub enum SeedFromHexError {
-    #[error("failed to decode hex string: {0}")]
+    #[error("failed to decode hex string representing PRNG seed")]
     HexDecodeError(#[from] hex::FromHexError),
-    #[error("PRNG seed must be 256 bits: {0}")]
+    #[error("PRNG seed must be 256 bits")]
     SizeError(#[from] std::array::TryFromSliceError),
 }
 
