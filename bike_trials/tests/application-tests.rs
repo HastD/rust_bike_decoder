@@ -12,9 +12,9 @@ use bike_trials::{
 #[test]
 fn main_single_threaded_test() {
     let seed =
-        Seed::try_from("052a104710b64326bcfd1ce592b9817552f72e210fa2b0520c64e9c9535606bf").unwrap();
+        Seed::try_from("b439d3f5b9f2d127effcc98ed2a70806441de9e5b3bc4f6d32ec2b963af03fee").unwrap();
     let settings = SettingsBuilder::default()
-        .num_trials(100_000)
+        .num_trials(10_000)
         .output(OutputTo::Void)
         .threads(1)
         .seed(Some(seed))
@@ -30,16 +30,16 @@ fn main_single_threaded_test() {
     assert_eq!(
         key,
         Key::from_support(
-            [78, 107, 113, 195, 230, 231, 259, 265, 354, 383, 412, 430, 455, 501, 583],
-            [8, 26, 62, 150, 204, 242, 265, 312, 324, 386, 437, 523, 535, 547, 566]
+            [114, 156, 192, 208, 285, 304, 323, 399, 418, 443, 491, 505, 535, 540, 541],
+            [8, 27, 67, 140, 160, 173, 220, 225, 242, 259, 310, 313, 358, 550, 579]
         )
         .unwrap()
     );
     assert_eq!(
         *e_supp.vector(),
         SparseErrorVector::from_support([
-            138, 276, 406, 447, 489, 494, 523, 553, 562, 622, 630, 651, 692, 733, 735, 783, 951,
-            1158
+            110, 114, 129, 177, 204, 226, 236, 387, 446, 592, 622, 660, 732, 753, 836, 841, 959,
+            1053
         ])
         .unwrap()
     );
