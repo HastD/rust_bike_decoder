@@ -33,9 +33,9 @@ const fn compile_time_assertions() {
     const _: () = assert!(NB_ITER >= 1, "NB_ITER must be positive");
 }
 
-/// Parses environment variable as `usize` if defined, otherwise yields the
-/// given `usize` value. Fails to compile if the environment variable is
-/// defined but cannot be parsed.
+/// Parses environment variable at compile-time as `usize` if defined,
+/// otherwise yields the given `usize` value. Fails to compile if the
+/// environment variable is defined but cannot be parsed.
 macro_rules! env_or_usize {
     ( $name:expr, $default:expr $(,)? ) => {{
         if let ::core::option::Option::Some(s) = ::core::option_env!($name) {

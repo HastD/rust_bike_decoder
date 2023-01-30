@@ -4,6 +4,7 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize, Serializer};
+use serde_with::serde_as;
 use std::{
     fmt,
     ops::{Add, Sub},
@@ -24,10 +25,11 @@ pub enum InvalidSupport {
 }
 
 // Sparse vector of fixed weight and length over GF(2)
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[repr(transparent)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
-    #[serde(with = "serde_arrays")] [Index; WEIGHT],
+    #[serde_as(as = "[_; WEIGHT]")] [Index; WEIGHT],
 );
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {

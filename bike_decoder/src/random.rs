@@ -3,6 +3,7 @@
 // This is a modified version of the implementation of rand::ThreadRng,
 // suitable for applications where reproducibility of the results is desired.
 
+use once_cell::sync::OnceCell;
 use rand::{rngs::OsRng, RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
@@ -10,15 +11,12 @@ use std::{
     cell::UnsafeCell,
     fmt,
     rc::Rc,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Mutex,
-    },
+    sync::atomic::{AtomicU32, Ordering},
     thread_local,
 };
 use thiserror::Error;
 
-static GLOBAL_SEED: Mutex<Option<Seed>> = Mutex::new(None);
+static GLOBAL_SEED: OnceCell<Seed> = OnceCell::new();
 static GLOBAL_THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
 
 thread_local! {
@@ -41,16 +39,11 @@ pub fn get_rng_from_seed(seed: Seed, jumps: u32) -> Xoshiro256PlusPlus {
 }
 
 pub fn global_seed() -> Option<Seed> {
-    *GLOBAL_SEED
-        .lock()
-        .expect("GLOBAL_SEED should not be poisoned")
+    GLOBAL_SEED.get().copied()
 }
 
 pub fn get_or_insert_global_seed(seed: Option<Seed>) -> Seed {
-    let mut global_seed = GLOBAL_SEED
-        .lock()
-        .expect("GLOBAL_SEED should not be poisoned");
-    *global_seed.get_or_insert(seed.unwrap_or_else(Seed::from_entropy))
+    *GLOBAL_SEED.get_or_init(|| seed.unwrap_or_else(Seed::from_entropy))
 }
 
 pub fn try_insert_global_seed(seed: Option<Seed>) -> Result<Seed, TryInsertGlobalSeedError> {
@@ -184,6 +177,7 @@ mod tests {
     fn thread_rng_seeds() {
         let mut rng = custom_thread_rng();
         {
+            // SAFETY: See safety comments for CustomThreadRng methods.
             let rng_inner = unsafe { &mut *rng.rng.get() };
             rng_inner.jump();
         }

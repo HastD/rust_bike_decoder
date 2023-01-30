@@ -6,10 +6,12 @@ use bike_decoder::{
     threshold::{bf_masked_threshold, bf_threshold_min},
 };
 use getset::{CopyGetters, Getters, Setters};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
+use serde_with::{formats::Flexible, serde_as, DurationSecondsWithFrac};
 use std::{fmt, ops::AddAssign, time::Duration};
 use thiserror::Error;
 
+#[serde_as]
 #[derive(Clone, CopyGetters, Debug, Deserialize, Getters, Serialize, Setters)]
 pub struct DataRecord {
     #[getset(get_copy = "pub")]
@@ -38,10 +40,7 @@ pub struct DataRecord {
     #[getset(get_copy = "pub")]
     seed: Seed,
     #[getset(get_copy = "pub", set = "pub")]
-    #[serde(
-        serialize_with = "serialize_duration",
-        deserialize_with = "deserialize_duration"
-    )]
+    #[serde_as(as = "DurationSecondsWithFrac<f64, Flexible>")]
     runtime: Duration,
     #[getset(get_copy = "pub", set = "pub")]
     thread_count: Option<u32>,
@@ -131,58 +130,6 @@ impl DecodingFailureRatio {
 #[error("invalid decoding failure ratio: number of failures must be <= number of trials")]
 pub struct InvalidDFRError;
 
-fn serialize_duration<S>(duration: &Duration, ser: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let secs_str = format!("{}.{:09}", duration.as_secs(), duration.subsec_nanos());
-    ser.serialize_str(&secs_str)
-}
-
-struct DurationVisitor;
-
-impl<'de> de::Visitor<'de> for DurationVisitor {
-    type Value = Duration;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a duration in seconds (as string or floating-point)")
-    }
-
-    fn visit_f64<E>(self, secs: f64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Duration::try_from_secs_f64(secs).map_err(E::custom)
-    }
-
-    fn visit_str<E>(self, secs_str: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        let secs = secs_str.parse::<f64>().map_err(|_| {
-            E::invalid_type(
-                de::Unexpected::Str(secs_str),
-                &"a string containing a valid float literal",
-            )
-        })?;
-        self.visit_f64(secs)
-    }
-
-    fn visit_u64<E>(self, secs: u64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Duration::from_secs(secs))
-    }
-}
-
-fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    deserializer.deserialize_any(DurationVisitor)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,7 +142,7 @@ mod tests {
         555],"h1":[10,41,50,59,62,119,153,164,179,208,284,384,438,513,554],"e_supp":[42,187,189,
         336,409,445,464,485,524,532,617,804,877,892,1085,1099,1117,1150],"e_source":"Random",
         "thread":2}],"seed":"52e19bb7d8474289f86caee35a11ac16dd09902d84fa01173ad83d7b1c376109",
-        "runtime":"1.478772912","thread_count":8}"#
+        "runtime":1.478772912,"thread_count":8}"#
             .split_whitespace()
             .collect()
     }
