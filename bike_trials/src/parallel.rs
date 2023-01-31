@@ -91,8 +91,13 @@ pub fn record_trial_results(
             i if i == rx_progress_idx => match oper.recv(&rx_progress) {
                 Ok(dfr) => {
                     application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-                    application::write_json(settings.output(), &data)?;
-                    unwritten_data = false;
+                    if data.num_trials() == settings.num_trials() {
+                        // Defer final write to make sure all decoding failures have been recorded
+                        unwritten_data = true;
+                    } else {
+                        application::write_json(settings.output(), &data)?;
+                        unwritten_data = false;
+                    }
                 }
                 Err(_) => selector.remove(rx_progress_idx),
             },
