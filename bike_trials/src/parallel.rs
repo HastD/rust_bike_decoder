@@ -10,10 +10,10 @@ use bike_decoder::{
         current_thread_id, custom_thread_rng, get_or_insert_global_seed, try_insert_global_seed,
     },
 };
-use crossbeam_channel::{unbounded as channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use crossbeam_channel::{unbounded as channel, Receiver, Select, Sender};
 use rand::Rng;
 use rayon::prelude::*;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub fn trial_iteration<R: Rng + ?Sized>(
     settings: &TrialSettings,
@@ -66,72 +66,49 @@ pub fn record_trial_results(
     rx_progress: Receiver<DecodingFailureRatio>,
     start_time: Instant,
 ) -> Result<DataRecord> {
-    const CONSECUTIVE_RESULTS_MAX: u32 = 10_000;
-    const CONSECUTIVE_PROGRESS_MAX: u32 = 100;
-    const PROGRESS_TIMEOUT: Duration = Duration::from_millis(100);
-    const PROGRESS_WAIT_TIME: Duration = Duration::from_secs(10);
     let seed = get_or_insert_global_seed(settings.seed());
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
-    let mut rx_results_open = true;
-    let mut rx_progress_open = true;
-    let mut consecutive_results_handled;
-    let mut consecutive_progress_handled;
-    // Alternate between handling decoding failures and handling progress updates
-    'outer: while rx_results_open || rx_progress_open {
-        consecutive_results_handled = 0;
-        // Handle decoding failures currently in channel, then continue
-        while rx_results_open && consecutive_results_handled < CONSECUTIVE_RESULTS_MAX {
-            match rx_results.try_recv() {
+    const CONSECUTIVE_RESULTS_MAX: usize = 10_000;
+    let mut unwritten_data = false;
+    let mut selector = Select::new();
+    let rx_results_idx = selector.recv(&rx_results);
+    let rx_progress_idx = selector.recv(&rx_progress);
+    // Receive and handle messages from rx_results and rx_progress until rx_results
+    // closes or the maximum number of decoding failures have been recorded.
+    while data.decoding_failures().len() < settings.record_max() {
+        let oper = selector.select();
+        match oper.index() {
+            i if i == rx_results_idx => match oper.recv(&rx_results) {
                 Ok(df) => {
                     application::handle_decoding_failure(df, &mut data, settings);
-                    if data.decoding_failures().len() == settings.record_max() {
-                        // Max number of decoding failures recorded, short-circuit outer loop
-                        break 'outer;
+                    unwritten_data = true;
+                    for df in rx_results.try_iter().take(CONSECUTIVE_RESULTS_MAX) {
+                        application::handle_decoding_failure(df, &mut data, settings);
                     }
-                    consecutive_results_handled += 1;
                 }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    // results channel closed, flag this loop to be skipped
-                    rx_results_open = false;
-                }
-            }
-        }
-        let timeout = if consecutive_results_handled >= CONSECUTIVE_RESULTS_MAX {
-            // Likely still decoding failures waiting to be handled, so skip delay
-            Duration::ZERO
-        } else {
-            PROGRESS_TIMEOUT
-        };
-        consecutive_progress_handled = 0;
-        // Handle all progress updates currently in channel, then continue (w/ timeout delay)
-        while rx_progress_open && consecutive_progress_handled < CONSECUTIVE_PROGRESS_MAX {
-            match rx_progress.recv_timeout(timeout) {
+                Err(_) => break,
+            },
+            i if i == rx_progress_idx => match oper.recv(&rx_progress) {
                 Ok(dfr) => {
                     application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-                    consecutive_progress_handled += 1;
+                    application::write_json(settings.output(), &data)?;
+                    unwritten_data = false;
                 }
-                Err(RecvTimeoutError::Timeout) => break,
-                Err(RecvTimeoutError::Disconnected) => {
-                    // progress channel closed, flag this loop to be skipped
-                    rx_progress_open = false;
-                }
-            }
-        }
-        if consecutive_progress_handled >= 1 {
-            application::write_json(settings.output(), &data)?;
+                Err(_) => selector.remove(rx_progress_idx),
+            },
+            _ => unreachable!(),
         }
     }
     // Drops the results receiver so no more decoding failures are handled
     drop(rx_results);
     // Receive and handle all remaining progress updates
-    while let Ok(dfr) = rx_progress.recv() {
-        let now = Instant::now();
-        application::handle_progress(dfr, &mut data, settings, now - start_time);
-        // Handle backlog and wait a little for more updates before writing
-        while let Ok(dfr) = rx_progress.recv_deadline(now + PROGRESS_WAIT_TIME) {
-            application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-        }
+    for dfr in rx_progress {
+        application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
+        application::write_json(settings.output(), &data)?;
+        unwritten_data = false;
+    }
+    // Failsafe to ensure any remaining data is written
+    if unwritten_data {
         application::write_json(settings.output(), &data)?;
     }
     Ok(data)
