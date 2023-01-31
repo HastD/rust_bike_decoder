@@ -2,7 +2,7 @@ use crate::{
     record::{DataRecord, DecodingFailureRatio},
     settings::{OutputTo, Settings, TrialSettings},
 };
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Result};
 use bike_decoder::{
     decoder::{DecodingFailure, DecodingResult},
     keys::{Key, KeyFilter},
@@ -13,6 +13,7 @@ use bike_decoder::{
 use rand::Rng;
 use serde::Serialize;
 use std::{
+    fmt::Debug,
     fs::{self, File},
     io::{self, BufWriter, Write},
     time::{Duration, Instant},
@@ -78,32 +79,50 @@ pub fn check_writable(output: &OutputTo, overwrite: bool) -> Result<()> {
     Ok(())
 }
 
-fn write_fallback<T>(err: Error, data: &impl Serialize) -> Result<T> {
-    eprintln!("Error writing JSON data to file; dumping to stderr.");
-    let json_str =
-        serde_json::to_string(data).context("Fallback failed, data cannot be written")?;
-    eprintln!("{json_str}");
-    Err(err)
+fn write_fallback<W, D>(mut writer: W, data: &D) -> io::Result<()>
+where
+    W: Write,
+    D: Debug + Serialize + ?Sized,
+{
+    if let Ok(json_str) = serde_json::to_string(data) {
+        writeln!(writer, "{json_str}")?;
+    } else {
+        writeln!(writer, "{data:?}")?;
+    }
+    Ok(())
 }
 
-/// Serializes data in JSON format to specified output location
-pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
+fn write_json_inner<D>(output: &OutputTo, data: &D) -> Result<()>
+where
+    D: Debug + Serialize + ?Sized,
+{
     let mut writer: Box<dyn Write> = match output {
         OutputTo::Stdout => Box::new(io::stdout()),
         OutputTo::File(filename) => {
-            let file = File::create(filename)
-                .or_else(|err| write_fallback(err.into(), data))
-                .context("Output file should be writable")?;
+            let file = File::create(filename).context("Output file should be writable")?;
             Box::new(BufWriter::new(file))
         }
         OutputTo::Void => return Ok(()),
     };
-    serde_json::to_writer(&mut writer, data)
-        .or_else(|err| write_fallback(err.into(), data))
-        .context("data should be writable as JSON")?;
+    serde_json::to_writer(&mut writer, data).context("data should be writable as JSON")?;
     writer.write_all(b"\n")?;
     writer.flush()?;
     Ok(())
+}
+
+/// Serializes data in JSON format to specified output location
+pub fn write_json<D>(output: &OutputTo, data: &D) -> Result<()>
+where
+    D: Debug + Serialize + ?Sized,
+{
+    let result = write_json_inner(output, data);
+    if result.is_err() {
+        eprintln!("ERROR: failed to write JSON data; dumping to stderr.");
+        if write_fallback(io::stderr(), data).is_err() {
+            eprintln!("ERROR: fallback also failed; data may have been lost.");
+        }
+    }
+    result
 }
 
 pub(crate) fn start_message(settings: &Settings) -> String {
