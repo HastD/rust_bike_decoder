@@ -14,7 +14,7 @@ use rand::Rng;
 use serde::Serialize;
 use std::{
     fs::{self, File},
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     time::{Duration, Instant},
 };
 use uuid::Uuid;
@@ -94,7 +94,7 @@ pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
             let file = File::create(filename)
                 .or_else(|err| write_fallback(err.into(), data))
                 .context("Output file should be writable")?;
-            Box::new(file)
+            Box::new(BufWriter::new(file))
         }
         OutputTo::Void => return Ok(()),
     };
@@ -102,6 +102,7 @@ pub fn write_json(output: &OutputTo, data: &impl Serialize) -> Result<()> {
         .or_else(|err| write_fallback(err.into(), data))
         .context("data should be writable as JSON")?;
     writer.write_all(b"\n")?;
+    writer.flush()?;
     Ok(())
 }
 
