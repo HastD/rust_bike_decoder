@@ -11,11 +11,11 @@ use bike_trials::{
 
 fn multithreaded_example_settings() -> Settings {
     let seed =
-        Seed::try_from("b6bcde4d5776464f054200a9d85943c8c66eabf9c9d21de3d0eda6023d38f02a").unwrap();
+        Seed::try_from("0a85f4ae8350b3a3034145b19a8d7bfa11f0baeeae106f6812ddfd0e5890b61d").unwrap();
     SettingsBuilder::default()
         .num_trials(10_000)
         .output(OutputTo::Void)
-        .threads(4)
+        .threads(3)
         .seed(Some(seed))
         .build()
         .unwrap()
@@ -29,7 +29,7 @@ fn main_multithreaded_test() {
     assert_eq!(random::global_seed().unwrap(), seed);
     assert_eq!(data.seed(), seed);
     assert_eq!(data.num_failures(), data.decoding_failures().len() as u64);
-    assert_eq!(data.thread_count(), Some(4));
+    assert_eq!(data.thread_count(), Some(3));
     assert_eq!(data.num_failures(), 1, "num_failures() didn't match");
     assert_eq!(data.num_trials(), settings.num_trials());
     assert_eq!(
@@ -38,12 +38,12 @@ fn main_multithreaded_test() {
         "decoding_failures().len() didn't match"
     );
     let df = &data.decoding_failures()[0];
-    assert_eq!(df.thread, Some(3));
+    assert_eq!(df.thread, Some(1));
     assert_eq!(
         df.key(),
         &Key::from_support(
-            [2, 24, 38, 45, 56, 67, 259, 323, 328, 348, 360, 388, 436, 574, 580],
-            [26, 55, 173, 231, 316, 324, 347, 354, 436, 439, 453, 459, 494, 532, 579]
+            [78, 96, 136, 206, 231, 307, 378, 443, 475, 493, 498, 512, 535, 560, 576],
+            [14, 41, 88, 94, 112, 117, 168, 186, 215, 251, 354, 366, 493, 560, 563]
         )
         .unwrap()
     );
@@ -51,8 +51,7 @@ fn main_multithreaded_test() {
     assert_eq!(
         e_supp.vector(),
         &SparseErrorVector::from_support([
-            28, 176, 185, 425, 587, 631, 660, 718, 733, 750, 780, 803, 825, 831, 958, 1116, 1132,
-            1161
+            29, 47, 308, 334, 338, 375, 491, 579, 665, 681, 760, 765, 789, 821, 875, 900, 957, 1037
         ])
         .unwrap()
     );
