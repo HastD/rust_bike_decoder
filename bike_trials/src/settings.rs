@@ -117,8 +117,7 @@ impl Settings {
                     .as_deref()
                     .map(serde_json::from_str)
                     .transpose()
-                    .map_err(SettingsError::UnparseableFixedKey)?
-                    .map(Key::sorted),
+                    .map_err(SettingsError::UnparseableFixedKey)?,
                 args.ncw,
                 args.ncw_overlap,
             )?,
@@ -197,15 +196,16 @@ pub struct TrialSettings {
 impl TrialSettings {
     pub fn new(
         key_filter: KeyFilter,
-        fixed_key: Option<Key>,
+        mut fixed_key: Option<Key>,
         ncw_class: Option<NearCodewordClass>,
         ncw_overlap: Option<usize>,
     ) -> Result<Self, SettingsError> {
-        if let Some(key) = fixed_key.as_ref() {
+        if let Some(key) = fixed_key.as_mut() {
             key.validate()?;
             if !key.matches_filter(key_filter) {
                 return Err(SettingsError::FixedKeyFilter(key_filter));
             }
+            key.sort();
         }
         if let Some(l) = ncw_overlap {
             let sample_class = ncw_class.ok_or(SettingsError::NcwDependency)?;

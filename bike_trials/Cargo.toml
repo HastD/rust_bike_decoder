@@ -19,7 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = "2"
 thiserror = "1.0.38"
-uuid = { version = "1.2", features = ["v4", "fast-rng"] }
+uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
 criterion = "0.4"

@@ -58,7 +58,7 @@ impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
 
     #[inline]
     pub fn sort(&mut self) {
-        self.0.sort()
+        self.0.sort_unstable()
     }
 
     #[inline]
@@ -467,7 +467,7 @@ mod tests {
         for _ in 0..TRIALS {
             let sparse = SparseVector::<ERROR_WEIGHT, BLOCK_LENGTH>::random(&mut rng);
             let mut sorted_supp = sparse.0;
-            sorted_supp.sort();
+            sorted_supp.sort_unstable();
             assert_eq!(sorted_supp.to_vec(), sparse.dense().support());
         }
     }

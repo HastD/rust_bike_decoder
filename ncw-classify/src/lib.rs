@@ -16,7 +16,7 @@ impl<const WT: usize, const LEN: usize> ClassifiedVector<WT, LEN> {
     pub fn new(key: QuasiCyclic<WT, LEN>, supp: &[Index]) -> Self {
         let overlaps = NcwOverlaps::new(&key, supp);
         let mut supp: Vec<Index> = supp.to_vec();
-        supp.sort();
+        supp.sort_unstable();
         Self {
             key,
             supp,
@@ -27,7 +27,7 @@ impl<const WT: usize, const LEN: usize> ClassifiedVector<WT, LEN> {
     pub fn random(key: &QuasiCyclic<WT, LEN>, supp_weight: usize) -> Self {
         let n = 2 * LEN as Index;
         let mut supp = (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight);
-        supp.sort();
+        supp.sort_unstable();
         let overlaps = NcwOverlaps::new(key, &supp);
         Self {
             key: key.clone(),

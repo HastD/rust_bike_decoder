@@ -121,7 +121,7 @@ pub fn odd_check_node_neighbors<const WEIGHT: usize, const LENGTH: usize>(
         .enumerate()
         .filter_map(|(check, &count)| (count % 2 == 1).then_some(CheckNode(check as u32)))
         .collect();
-    odd_check_nodes.sort();
+    odd_check_nodes.sort_unstable();
     (subgraph, check_node_degrees, odd_check_nodes)
 }
 
