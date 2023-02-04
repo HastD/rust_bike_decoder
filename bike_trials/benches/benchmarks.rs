@@ -6,9 +6,10 @@ use bike_decoder::{
 };
 use bike_trials::{
     application::{self, decoding_failure_trial, handle_decoding_failure},
+    output::OutputTo,
     parallel,
     record::DataRecord,
-    settings::{OutputTo, SettingsBuilder, TrialSettings},
+    settings::{SettingsBuilder, TrialSettings},
 };
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use crossbeam_channel::unbounded as channel;

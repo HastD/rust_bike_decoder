@@ -4,10 +4,7 @@ use bike_decoder::{
     random::{self, Seed},
     vectors::SparseErrorVector,
 };
-use bike_trials::{
-    application, parallel,
-    settings::{OutputTo, SettingsBuilder},
-};
+use bike_trials::{application, output::OutputTo, parallel, settings::SettingsBuilder};
 
 #[test]
 fn main_single_threaded_test() {

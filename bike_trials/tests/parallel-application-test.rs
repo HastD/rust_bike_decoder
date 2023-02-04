@@ -5,8 +5,9 @@ use bike_decoder::{
     vectors::SparseErrorVector,
 };
 use bike_trials::{
+    output::OutputTo,
     parallel,
-    settings::{OutputTo, Settings, SettingsBuilder},
+    settings::{Settings, SettingsBuilder},
 };
 
 fn multithreaded_example_settings() -> Settings {

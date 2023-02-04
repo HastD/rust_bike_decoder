@@ -1,8 +1,9 @@
 use crate::{
+    output,
     record::{DataRecord, DecodingFailureRatio},
-    settings::{OutputTo, Settings, TrialSettings},
+    settings::{Settings, TrialSettings},
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bike_decoder::{
     decoder::{DecodingFailure, DecodingResult},
     keys::{Key, KeyFilter},
@@ -11,14 +12,7 @@ use bike_decoder::{
     random::{current_thread_id, get_rng_from_seed, global_thread_count, Seed},
 };
 use rand::Rng;
-use serde::Serialize;
-use std::{
-    fmt::Debug,
-    fs::{self, File},
-    io::{self, BufWriter, Write},
-    time::{Duration, Instant},
-};
-use uuid::Uuid;
+use std::time::{Duration, Instant};
 
 pub fn decoding_trial<R>(settings: &TrialSettings, rng: &mut R) -> DecodingResult
 where
@@ -46,83 +40,6 @@ where
     R: Rng + ?Sized,
 {
     decoding_trial(settings, rng).try_into().ok()
-}
-
-pub fn check_writable(output: &OutputTo, overwrite: bool) -> Result<()> {
-    if let OutputTo::File(path) = output {
-        if !overwrite
-            && path
-                .try_exists()
-                .context("Output file path should be accessible")?
-            && fs::metadata(path)
-                .context("Output file metadata should be readable")?
-                .len()
-                > 0
-        {
-            // If file already exists and is nonempty, copy its contents to a backup file
-            fs::copy(
-                path,
-                format!("{}-backup-{}", path.display(), Uuid::new_v4()),
-            )
-            .with_context(|| {
-                format!(
-                    "Should be able to back up existing file at {}",
-                    path.display()
-                )
-            })?;
-        }
-        File::create(path)
-            .context("Output file should be openable")?
-            .write_all(b"")
-            .context("Output file should be writable")?;
-    }
-    Ok(())
-}
-
-fn write_fallback<W, D>(mut writer: W, data: &D) -> io::Result<()>
-where
-    W: Write,
-    D: Debug + Serialize + ?Sized,
-{
-    if let Ok(json_str) = serde_json::to_string(data) {
-        writeln!(writer, "{json_str}")?;
-    } else {
-        writeln!(writer, "{data:?}")?;
-    }
-    Ok(())
-}
-
-fn write_json_inner<D>(output: &OutputTo, data: &D) -> Result<()>
-where
-    D: Debug + Serialize + ?Sized,
-{
-    let mut writer: Box<dyn Write> = match output {
-        OutputTo::Stdout => Box::new(io::stdout()),
-        OutputTo::File(filename) => {
-            let file = File::create(filename).context("Output file should be writable")?;
-            Box::new(BufWriter::new(file))
-        }
-        OutputTo::Void => return Ok(()),
-    };
-    serde_json::to_writer(&mut writer, data).context("data should be writable as JSON")?;
-    writer.write_all(b"\n")?;
-    writer.flush()?;
-    Ok(())
-}
-
-/// Serializes data in JSON format to specified output location
-pub fn write_json<D>(output: &OutputTo, data: &D) -> Result<()>
-where
-    D: Debug + Serialize + ?Sized,
-{
-    let result = write_json_inner(output, data);
-    if result.is_err() {
-        eprintln!("ERROR: failed to write JSON data; dumping to stderr.");
-        if write_fallback(io::stderr(), data).is_err() {
-            eprintln!("ERROR: fallback also failed; data may have been lost.");
-        }
-    }
-    result
 }
 
 pub(crate) fn start_message(settings: &Settings) -> String {
@@ -231,7 +148,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
     if settings.verbose() >= 1 {
         eprintln!("{}", start_message(settings));
     }
-    check_writable(settings.output(), settings.overwrite())?;
+    output::check_writable(settings.output(), settings.overwrite())?;
     // Set PRNG seed used for generating data
     let seed = settings.seed().unwrap_or_else(Seed::from_entropy);
     // Initialize object storing data to be recorded
@@ -253,7 +170,7 @@ pub fn run(settings: &Settings) -> Result<DataRecord> {
         let dfr = DecodingFailureRatio::new(new_failure_count, new_trials)
             .expect("Number of decoding failures should be <= number of trials");
         handle_progress(dfr, &mut data, settings, start_time.elapsed());
-        write_json(settings.output(), &data)?;
+        output::write_json(settings.output(), &data)?;
         trials_remaining -= new_trials;
     }
     if settings.verbose() >= 1 {

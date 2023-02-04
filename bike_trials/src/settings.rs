@@ -1,3 +1,4 @@
+use crate::output::OutputTo;
 use bike_decoder::{
     keys::{FilterError, Key, KeyFilter},
     ncw::NearCodewordClass,
@@ -7,7 +8,7 @@ use bike_decoder::{
 use clap::Parser;
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
-use std::{num::NonZeroU64, path::PathBuf};
+use std::num::NonZeroU64;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Parser)]
@@ -228,21 +229,6 @@ impl TrialSettings {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum OutputTo {
-    #[default]
-    Stdout,
-    File(PathBuf),
-    Void,
-}
-
-impl OutputTo {
-    #[inline]
-    pub fn is_file(&self) -> bool {
-        matches!(*self, Self::File(_))
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum SettingsError {
     #[error(transparent)]
@@ -267,6 +253,7 @@ pub enum SettingsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn from_args_example() {

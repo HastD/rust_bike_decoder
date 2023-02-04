@@ -1,5 +1,5 @@
 use crate::{
-    application,
+    application, output,
     record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
@@ -95,7 +95,7 @@ pub fn record_trial_results(
                         // Defer final write to make sure all decoding failures have been recorded
                         unwritten_data = true;
                     } else {
-                        application::write_json(settings.output(), &data)?;
+                        output::write_json(settings.output(), &data)?;
                         unwritten_data = false;
                     }
                 }
@@ -109,12 +109,12 @@ pub fn record_trial_results(
     // Receive and handle all remaining progress updates
     for dfr in rx_progress {
         application::handle_progress(dfr, &mut data, settings, start_time.elapsed());
-        application::write_json(settings.output(), &data)?;
+        output::write_json(settings.output(), &data)?;
         unwritten_data = false;
     }
     // Failsafe to ensure any remaining data is written
     if unwritten_data {
-        application::write_json(settings.output(), &data)?;
+        output::write_json(settings.output(), &data)?;
     }
     Ok(data)
 }
@@ -124,7 +124,7 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
     if settings.verbose() >= 1 {
         eprintln!("{}", application::start_message(settings));
     }
-    application::check_writable(settings.output(), settings.overwrite())?;
+    output::check_writable(settings.output(), settings.overwrite())?;
     // Set global PRNG seed used for generating data
     let seed = try_insert_global_seed(settings.seed())
         .context("Must be able to set global seed to user-specified seed")?;
