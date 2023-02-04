@@ -1,11 +1,15 @@
-mod counter;
-pub mod graphs;
-
-use crate::graphs::AbsorbingDecodingFailure;
-use anyhow::{Context, Result};
-use bike_decoder::{decoder::DecodingFailure, keys::QuasiCyclic};
+use anyhow::Context;
+use bike_decoder::{
+    decoder::DecodingFailure,
+    graphs::{self, AbsorbingDecodingFailure, TannerGraphEdges},
+    keys::QuasiCyclic,
+    random::custom_thread_rng,
+    vectors::Index,
+};
 use clap::{Parser, Subcommand};
+use itertools::Itertools;
 use malachite::num::arithmetic::traits::CheckedBinomialCoefficient;
+use rand::seq::IteratorRandom;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
@@ -64,14 +68,14 @@ enum Command {
 }
 
 /// Writes data in JSON format to stdout
-fn write_json(data: &impl Serialize) -> Result<()> {
+fn write_json(data: &impl Serialize) -> Result<(), anyhow::Error> {
     let mut writer = io::stdout();
     serde_json::to_writer(&mut writer, data).context("data should be writable as JSON")?;
     writer.write_all(b"\n")?;
     Ok(())
 }
 
-fn filter(overlaps: bool, parallel: bool) -> Result<()> {
+fn filter(overlaps: bool, parallel: bool) -> Result<(), anyhow::Error> {
     let mut de = Deserializer::from_reader(io::stdin());
     let decoding_failures = <Vec<DecodingFailure>>::deserialize(&mut de)
         .context("Failed to parse JSON input as Vec<DecodingFailure>")?;
@@ -89,15 +93,60 @@ fn filter(overlaps: bool, parallel: bool) -> Result<()> {
     write_json(&absorbing)
 }
 
+/// Enumerates all absorbing sets of a given weight for `key`.
+pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
+    key: &QuasiCyclic<WEIGHT, LENGTH>,
+    supp_weight: usize,
+    parallel: bool,
+) -> Vec<Vec<Index>> {
+    let n = 2 * LENGTH as Index;
+    let edges = TannerGraphEdges::new(key);
+    let combinations = (0..n).combinations(supp_weight);
+    if parallel {
+        combinations
+            .par_bridge()
+            .filter(|supp| graphs::is_absorbing_subgraph(&edges, supp))
+            .collect()
+    } else {
+        combinations
+            .filter(|supp| graphs::is_absorbing_subgraph(&edges, supp))
+            .collect()
+    }
+}
+
+/// Searches for absorbing sets for `key`.
+/// The `parallel` argument uses Rayon to run the computation in parallel.
+pub fn sample_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
+    key: &QuasiCyclic<WEIGHT, LENGTH>,
+    supp_weight: usize,
+    samples: usize,
+    parallel: bool,
+) -> Vec<Vec<Index>> {
+    let n = 2 * LENGTH as Index;
+    let edges = TannerGraphEdges::new(key);
+    if parallel {
+        (0..samples)
+            .into_par_iter()
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
+            .filter(|supp| graphs::is_absorbing_subgraph(&edges, supp))
+            .collect()
+    } else {
+        (0..samples)
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
+            .filter(|supp| graphs::is_absorbing_subgraph(&edges, supp))
+            .collect()
+    }
+}
+
 fn enumerate(
     key: Option<EnumKey>,
     error_weight: usize,
     verbose: bool,
     parallel: bool,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     let key = key.unwrap_or_else(|| EnumKey::random(&mut rand::thread_rng()));
     let time = Instant::now();
-    let absorbing = graphs::enumerate_absorbing_sets(&key, error_weight, parallel);
+    let absorbing = enumerate_absorbing_sets(&key, error_weight, parallel);
     if verbose {
         eprintln!("Key: {}", serde_json::to_string(&key)?);
         eprintln!("Runtime: {:?}", time.elapsed());
@@ -128,7 +177,7 @@ fn sample(
     samples: usize,
     verbose: bool,
     parallel: bool,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     if let Some(binom) = usize::checked_binomial_coefficient(2 * BLOCK_LENGTH, error_weight) {
         if samples >= binom {
             eprintln!("Number of samples >= total number of candidates; enumerating instead.");
@@ -137,7 +186,7 @@ fn sample(
     }
     let key = key.unwrap_or_else(|| EnumKey::random(&mut rand::thread_rng()));
     let time = Instant::now();
-    let absorbing = graphs::sample_absorbing_sets(&key, error_weight, samples, parallel);
+    let absorbing = sample_absorbing_sets(&key, error_weight, samples, parallel);
     if verbose {
         eprintln!("Key: {}", serde_json::to_string(&key)?);
         eprintln!("Runtime: {:?}", time.elapsed());
@@ -153,13 +202,13 @@ fn sample(
     Ok(())
 }
 
-fn parse_key(s: String) -> Result<EnumKey> {
+fn parse_key(s: String) -> Result<EnumKey, anyhow::Error> {
     let key: EnumKey = serde_json::from_str::<EnumKey>(&s)
         .context("--key should be valid JSON representing a key")?;
     Ok(key)
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
     match cli.command {
         Command::Filter { ncw } => filter(ncw, cli.parallel),

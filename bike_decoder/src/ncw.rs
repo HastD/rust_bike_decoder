@@ -1,12 +1,13 @@
 use crate::{
     keys::{Key, QuasiCyclic},
     parameters::*,
+    random::custom_thread_rng,
     vectors::{Index, SparseErrorVector},
 };
 use getset::{CopyGetters, Getters};
 use rand::{
     distributions::{Distribution, Uniform},
-    seq::SliceRandom,
+    seq::{IteratorRandom, SliceRandom},
     Rng,
 };
 use serde::{Deserialize, Serialize};
@@ -305,6 +306,38 @@ impl NcwOverlaps {
             c: near_codeword_max_overlap::<LEN>(supp, &patterns_c),
             n: near_codeword_max_overlap::<LEN>(supp, &patterns_n),
             two_n: near_codeword_max_overlap::<LEN>(supp, &patterns_2n),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClassifiedVector<const WT: usize, const LEN: usize> {
+    key: QuasiCyclic<WT, LEN>,
+    supp: Vec<Index>,
+    overlaps: NcwOverlaps,
+}
+
+impl<const WT: usize, const LEN: usize> ClassifiedVector<WT, LEN> {
+    pub fn new(key: QuasiCyclic<WT, LEN>, supp: &[Index]) -> Self {
+        let overlaps = NcwOverlaps::new(&key, supp);
+        let mut supp: Vec<Index> = supp.to_vec();
+        supp.sort_unstable();
+        Self {
+            key,
+            supp,
+            overlaps,
+        }
+    }
+
+    pub fn random(key: &QuasiCyclic<WT, LEN>, supp_weight: usize) -> Self {
+        let n = 2 * LEN as Index;
+        let mut supp = (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight);
+        supp.sort_unstable();
+        let overlaps = NcwOverlaps::new(key, &supp);
+        Self {
+            key: key.clone(),
+            supp,
+            overlaps,
         }
     }
 }

@@ -9,18 +9,9 @@ license = "MIT"
 anyhow = "1"
 bike_decoder = { path = "../bike_decoder" }
 clap = { version = "4", features = ["derive"] }
-getset = "0.1"
 itertools = "0.10"
 malachite = "0.3.2"
-petgraph = "0.6"
 rand = "0.8"
 rayon = "1.6"
 serde = "1"
 serde_json = "1"
-
-[dev-dependencies]
-criterion = "0.4"
-
-[[bench]]
-name = "benchmarks"
-harness = false

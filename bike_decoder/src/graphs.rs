@@ -1,17 +1,13 @@
-use crate::counter::IndexCounter;
-use bike_decoder::{
+use crate::{
+    counter::IndexCounter,
     decoder::{bgf_decoder, DecodingFailure},
     keys::QuasiCyclic,
     ncw::NcwOverlaps,
-    random::custom_thread_rng,
     syndrome::Syndrome,
     vectors::Index,
 };
 use getset::Getters;
-use itertools::Itertools;
 use petgraph::graph::{NodeIndex, UnGraph};
-use rand::seq::IteratorRandom;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -189,51 +185,6 @@ impl AbsorbingDecodingFailure {
         } else {
             None
         }
-    }
-}
-
-/// Enumerates all absorbing sets of a given weight for `key`.
-/// The `parallel` argument uses Rayon to run the computation in parallel.
-pub fn enumerate_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
-    key: &QuasiCyclic<WEIGHT, LENGTH>,
-    supp_weight: usize,
-    parallel: bool,
-) -> Vec<Vec<Index>> {
-    let n = 2 * LENGTH as Index;
-    let edges = TannerGraphEdges::new(key);
-    let combinations = (0..n).combinations(supp_weight);
-    if parallel {
-        combinations
-            .par_bridge()
-            .filter(|supp| is_absorbing_subgraph(&edges, supp))
-            .collect()
-    } else {
-        combinations
-            .filter(|supp| is_absorbing_subgraph(&edges, supp))
-            .collect()
-    }
-}
-
-/// Searches for absorbing sets for `key`.
-pub fn sample_absorbing_sets<const WEIGHT: usize, const LENGTH: usize>(
-    key: &QuasiCyclic<WEIGHT, LENGTH>,
-    supp_weight: usize,
-    samples: usize,
-    parallel: bool,
-) -> Vec<Vec<Index>> {
-    let n = 2 * LENGTH as Index;
-    let edges = TannerGraphEdges::new(key);
-    if parallel {
-        (0..samples)
-            .into_par_iter()
-            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
-            .filter(|supp| is_absorbing_subgraph(&edges, supp))
-            .collect()
-    } else {
-        (0..samples)
-            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), supp_weight))
-            .filter(|supp| is_absorbing_subgraph(&edges, supp))
-            .collect()
     }
 }
 

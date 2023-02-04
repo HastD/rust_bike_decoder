@@ -1,7 +1,8 @@
 use bike_decoder::{
     decoder::{bgf_decoder, unsatisfied_parity_checks},
+    graphs::{self, TannerGraphEdges},
     keys::Key,
-    ncw::{NearCodewordClass, TaggedErrorVector},
+    ncw::{ClassifiedVector, NearCodewordClass, TaggedErrorVector},
     parameters::*,
     random::custom_thread_rng,
     syndrome::Syndrome,
@@ -111,9 +112,61 @@ pub fn group_threshold(c: &mut Criterion) {
     });
 }
 
+pub fn group_graphs(c: &mut Criterion) {
+    c.bench_function("is_absorbing", |b| {
+        let mut rng = custom_thread_rng();
+        b.iter_batched_ref(
+            || {
+                let key = Key::random(&mut rng);
+                let e_supp = SparseErrorVector::random(&mut rng);
+                (key, e_supp)
+            },
+            |(key, e_supp)| {
+                black_box(graphs::is_absorbing(
+                    black_box(key),
+                    black_box(e_supp.support()),
+                ));
+            },
+            BatchSize::SmallInput,
+        )
+    });
+    c.bench_function("is_absorbing_subgraph", |b| {
+        let mut rng = custom_thread_rng();
+        let key = Key::random(&mut rng);
+        let edges = TannerGraphEdges::new(&key);
+        b.iter_batched_ref(
+            || SparseErrorVector::random(&mut rng),
+            |e_supp| {
+                black_box(graphs::is_absorbing_subgraph(
+                    &edges,
+                    black_box(e_supp.support()),
+                ));
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+pub fn group_ncw_classify(c: &mut Criterion) {
+    c.bench_function("ncw_classify", |b| {
+        let mut rng = custom_thread_rng();
+        b.iter_batched_ref(
+            || Key::random(&mut rng),
+            |key| {
+                black_box(ClassifiedVector::random(
+                    black_box(key),
+                    black_box(ERROR_WEIGHT),
+                ));
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = group_decoder, group_randgen, group_syndrome, group_threshold,
+    targets = group_decoder, group_randgen, group_syndrome, group_threshold, group_graphs,
+        group_ncw_classify
 }
 criterion_main!(benches);
