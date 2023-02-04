@@ -1,16 +1,12 @@
 [workspace]
-members = ["absorbing", "bike_decoder", "bike_trials", "ncw-classify"]
+members = ["absorbing", "bike-decoder", "bike-trials", "ncw-classify"]
 
 [profile.dev]
 opt-level = 1
-incremental = true
 
 [profile.release]
-incremental = true
 
 [profile.test]
 opt-level = 2
-incremental = true
 
 [profile.bench]
-incremental = true

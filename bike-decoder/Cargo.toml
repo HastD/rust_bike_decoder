@@ -1,5 +1,5 @@
 [package]
-name = "bike_decoder"
+name = "bike-decoder"
 version = "0.1.3"
 edition = "2021"
 description = "Libraries for a BGF decoder for QC-MDPC codes"
