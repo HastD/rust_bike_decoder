@@ -45,6 +45,7 @@ pub struct Args {
     )]
     overwrite: bool,
     #[arg(
+        short,
         long,
         help = "Run in parallel with automatically chosen number of threads"
     )]

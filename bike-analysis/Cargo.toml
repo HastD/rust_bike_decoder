@@ -1,8 +1,8 @@
 [package]
-name = "absorbing"
+name = "bike-analysis"
 version = "0.1.0"
 edition = "2021"
-description = "Analysis of absorbing sets for QC-MDPC codes"
+description = "Data analysis utilities for QC-MDPC codes"
 license = "MIT"
 
 [dependencies]
@@ -13,5 +13,6 @@ itertools = "0.10"
 malachite = "0.3.2"
 rand = "0.8"
 rayon = "1.6"
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_with = "2"

@@ -14,7 +14,7 @@ pub const TANNER_GRAPH_EDGES: usize = BLOCK_WEIGHT * ROW_LENGTH;
 pub const SIZE_AVX: usize = ((BLOCK_LENGTH * 8) + (256 * 16 - 1)) / (256 * 16) * (256 * 16) / 8;
 
 #[allow(dead_code, clippy::all)]
-const fn compile_time_assertions() {
+const fn _compile_time_assertions() {
     const _: () = assert!(usize::BITS >= 32, "16-bit systems not supported");
     const _: () = assert!(
         0 < BLOCK_WEIGHT && BLOCK_WEIGHT < BLOCK_LENGTH,
@@ -33,15 +33,26 @@ const fn compile_time_assertions() {
     const _: () = assert!(NB_ITER >= 1, "NB_ITER must be positive");
 }
 
+#[doc(hidden)]
+pub mod __macro {
+    pub use ::core::option::Option;
+    pub use ::core::option_env;
+    pub use ::core::primitive::usize;
+    pub use ::core::result::Result;
+    pub use ::konst::primitive::parse_usize;
+}
+
 /// Parses environment variable at compile-time as `usize` if defined,
 /// otherwise yields the given `usize` value. Fails to compile if the
 /// environment variable is defined but cannot be parsed.
+#[macro_export]
 macro_rules! env_or_usize {
     ( $name:expr, $default:expr $(,)? ) => {{
-        if let ::core::option::Option::Some(s) = ::core::option_env!($name) {
-            match ::konst::primitive::parse_usize(s) {
-                ::core::result::Result::Ok::<::core::primitive::usize, _>(value) => value,
-                ::core::result::Result::Err(err) => err.panic(),
+        use $crate::parameters::__macro::{option_env, parse_usize, usize, Option, Result};
+        if let Option::Some(s) = option_env!($name) {
+            match parse_usize(s) {
+                Result::Ok::<usize, _>(value) => value,
+                Result::Err(err) => err.panic(),
             }
         } else {
             $default

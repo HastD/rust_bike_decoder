@@ -3,7 +3,6 @@ use crate::{
     record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
-use anyhow::Result;
 use bike_decoder::{
     decoder::{DecodingFailure, DecodingResult},
     keys::{Key, KeyFilter},
@@ -143,7 +142,7 @@ pub fn handle_progress(
     }
 }
 
-pub fn run(settings: &Settings) -> Result<DataRecord> {
+pub fn run(settings: &Settings) -> Result<DataRecord, anyhow::Error> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         eprintln!("{}", start_message(settings));

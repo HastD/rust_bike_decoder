@@ -4,7 +4,7 @@ use crate::{
     parameters::*,
     syndrome::Syndrome,
     threshold::{bf_masked_threshold, THRESHOLD_CACHE},
-    vectors::ErrorVector,
+    vectors::{ErrorVector, Index, SparseErrorVector},
 };
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
@@ -80,6 +80,10 @@ impl TryFrom<DecodingResult> for DecodingFailure {
     }
 }
 
+#[derive(Clone, Copy, Debug, Error)]
+#[error("not a decoding failure, so can't convert to DecodingFailure")]
+pub struct NotFailureError;
+
 impl DecodingFailure {
     #[inline]
     pub fn take_key_vector(self) -> (Key, TaggedErrorVector) {
@@ -87,9 +91,24 @@ impl DecodingFailure {
     }
 }
 
-#[derive(Clone, Copy, Debug, Error)]
-#[error("not a decoding failure, so can't convert to DecodingFailure")]
-pub struct NotFailureError;
+#[derive(Clone, CopyGetters, Debug, Getters, Serialize, Deserialize)]
+pub struct DecoderCycle {
+    #[getset(get = "pub")]
+    key: Key,
+    #[getset(get = "pub")]
+    e_in: SparseErrorVector,
+    #[getset(get = "pub")]
+    e_out: Vec<Index>,
+    #[getset(get_copy = "pub")]
+    cycle: Option<CycleIters>,
+}
+
+#[derive(Clone, Copy, CopyGetters, Debug, Serialize, Deserialize)]
+#[getset(get_copy = "pub")]
+pub struct CycleIters {
+    start: usize,
+    length: usize,
+}
 
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
@@ -113,6 +132,41 @@ pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
         }
     }
     (e_out, ws == 0)
+}
+
+pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> DecoderCycle {
+    const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
+    let mut s = Syndrome::from_sparse(key, e_in);
+    let mut e_out = ErrorVector::zero();
+    let thr = THRESHOLD_CACHE[s.hamming_weight()];
+    let (black, gray) = bf_iter(key, &mut s, &mut e_out, thr);
+    bf_masked_iter(key, &mut s, &mut e_out, black, BF_MASKED_THRESHOLD);
+    bf_masked_iter(key, &mut s, &mut e_out, gray, BF_MASKED_THRESHOLD);
+    let mut e_out_cache = vec![e_out.support()];
+    for current_iter in 1..max_iters {
+        let thr = THRESHOLD_CACHE[s.hamming_weight()];
+        bf_iter_no_mask(key, &mut s, &mut e_out, thr);
+        let e_out_supp = e_out.support();
+        if let Some(start_iter) = e_out_cache.iter().position(|x| x == &e_out_supp) {
+            return DecoderCycle {
+                key: key.clone(),
+                e_in: e_in.clone(),
+                e_out: e_out_supp,
+                cycle: Some(CycleIters {
+                    start: start_iter,
+                    length: current_iter.abs_diff(start_iter),
+                }),
+            };
+        } else {
+            e_out_cache.push(e_out_supp);
+        }
+    }
+    DecoderCycle {
+        key: key.clone(),
+        e_in: e_in.clone(),
+        e_out: e_out.support(),
+        cycle: None,
+    }
 }
 
 pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LENGTH]; 2] {

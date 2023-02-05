@@ -1,9 +1,10 @@
 use crate::{
-    application, output,
+    application,
+    output::{self, OutputError},
     record::{DataRecord, DecodingFailureRatio},
     settings::{Settings, TrialSettings},
 };
-use anyhow::{Context, Result};
+use anyhow::Context;
 use bike_decoder::{
     decoder::DecodingFailure,
     random::{
@@ -40,7 +41,7 @@ pub fn trial_loop(
     save_frequency: u64,
     tx_results: &Sender<DecodingFailure>,
     tx_progress: &Sender<DecodingFailureRatio>,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     let mut trials_remaining = num_trials;
     while trials_remaining > 0 {
         let new_trials = save_frequency.min(trials_remaining);
@@ -65,7 +66,7 @@ pub fn record_trial_results(
     rx_results: Receiver<DecodingFailure>,
     rx_progress: Receiver<DecodingFailureRatio>,
     start_time: Instant,
-) -> Result<DataRecord> {
+) -> Result<DataRecord, OutputError> {
     let seed = get_or_insert_global_seed(settings.seed());
     let mut data = DataRecord::new(settings.key_filter(), settings.fixed_key().cloned(), seed);
     const CONSECUTIVE_RESULTS_MAX: usize = 10_000;
@@ -119,7 +120,7 @@ pub fn record_trial_results(
     Ok(data)
 }
 
-pub fn run_parallel(settings: &Settings) -> Result<DataRecord> {
+pub fn run_parallel(settings: &Settings) -> Result<DataRecord, anyhow::Error> {
     let start_time = Instant::now();
     if settings.verbose() >= 1 {
         eprintln!("{}", application::start_message(settings));
