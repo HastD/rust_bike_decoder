@@ -186,8 +186,8 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
                     .expect("Must ensure BLOCK_LENGTH <= SIZE_AVX")
             }
             let mut upc = [[0u8; 2 * SIZE_AVX]; 2];
-            multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer(), SIZE_AVX);
-            multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer(), SIZE_AVX);
+            multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer());
+            multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer());
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
         }
     }
@@ -272,18 +272,22 @@ pub fn bf_masked_iter(
     }
 }
 
-// Adapted from Valentin Vasseur's QC-MDPC decoder implementation
-// Multiplies a sparse vector of the given weight by a dense vector of the given length.
-// The dense vector should be duplicated in memory to precompute cyclic shifts.
-// Stores result in the provided output buffer.
+/// Multiplies a sparse vector by a dense vector. The dense vector should be
+/// duplicated in memory to precompute cyclic shifts. The results are stored in
+/// the provided output buffer.
+/// Adapted from Valentin Vasseur's QC-MDPC decoder implementation.
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
     target_feature = "avx2"
 ))]
-fn multiply_avx2(output: &mut [u8], sparse: &[u32], dense: &[bool], block_length: usize) {
+#[allow(clippy::needless_range_loop)]
+fn multiply_avx2(output: &mut [u8], sparse: &[Index], dense: &[bool]) {
     use safe_arch::{add_i8_m256i, zeroed_m256i};
     const AVX_BUFF_LEN: usize = 8;
     let dense: &[u8] = bytemuck::cast_slice(dense);
+    assert_eq!(dense.len() % (64 * AVX_BUFF_LEN), 0);
+    let block_length = dense.len() / 2;
+    assert!(sparse.iter().all(|idx| (*idx as usize) < block_length));
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
     for i in (0..block_length / 32).step_by(AVX_BUFF_LEN) {
@@ -291,8 +295,11 @@ fn multiply_avx2(output: &mut [u8], sparse: &[u32], dense: &[bool], block_length
         buffer.iter_mut().for_each(|x| *x = zeroed_m256i());
         for offset in sparse.iter().map(|idx| *idx as usize + 32 * i) {
             for k in 0..AVX_BUFF_LEN {
-                // add offset block of dense vector to buffer
-                let dense_slice = &dense[offset + 32 * k..offset + 32 * k + 32];
+                // SAFETY: upper bound = idx + 32*(i + k + 1) <= idx + 32*(i + AVX_BUFF_LEN)
+                // <= idx + block_length < dense.len() due to the above assertions.
+                // Also, the lower bound is nonnegative and less than the upper bound.
+                let dense_slice =
+                    unsafe { dense.get_unchecked(offset + 32 * k..offset + 32 * k + 32) };
                 buffer[k] = add_i8_m256i(buffer[k], bytemuck::pod_read_unaligned(dense_slice));
             }
         }
