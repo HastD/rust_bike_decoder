@@ -180,12 +180,12 @@ pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LEN
     {
         if std::arch::is_x86_feature_detected!("avx2") {
             #[inline]
-            fn truncate_buffer(buf: [u8; 2 * SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
+            fn truncate_buffer(buf: [u8; SIZE_AVX]) -> [u8; BLOCK_LENGTH] {
                 (&buf[..BLOCK_LENGTH])
                     .try_into()
                     .expect("Must ensure BLOCK_LENGTH <= SIZE_AVX")
             }
-            let mut upc = [[0u8; 2 * SIZE_AVX]; 2];
+            let mut upc = [[0u8; SIZE_AVX]; 2];
             multiply_avx2(&mut upc[0], h_supp[0], s.contents_with_buffer());
             multiply_avx2(&mut upc[1], h_supp[1], s.contents_with_buffer());
             return [truncate_buffer(upc[0]), truncate_buffer(upc[1])];
@@ -285,8 +285,10 @@ fn multiply_avx2(output: &mut [u8], sparse: &[Index], dense: &[bool]) {
     use safe_arch::{add_i8_m256i, zeroed_m256i};
     const AVX_BUFF_LEN: usize = 8;
     let dense: &[u8] = bytemuck::cast_slice(dense);
-    assert_eq!(dense.len() % (64 * AVX_BUFF_LEN), 0);
     let block_length = dense.len() / 2;
+    // assertions to eliminate the need for bounds checking in the inner loop
+    assert_eq!(dense.len() % (64 * AVX_BUFF_LEN), 0);
+    assert!(output.len() >= block_length);
     assert!(sparse.iter().all(|idx| (*idx as usize) < block_length));
     // initialize buffer array of 256-bit integers
     let mut buffer = [zeroed_m256i(); AVX_BUFF_LEN];
@@ -297,14 +299,17 @@ fn multiply_avx2(output: &mut [u8], sparse: &[Index], dense: &[bool]) {
             for k in 0..AVX_BUFF_LEN {
                 // SAFETY: upper bound = idx + 32*(i + k + 1) <= idx + 32*(i + AVX_BUFF_LEN)
                 // <= idx + block_length < dense.len() due to the above assertions.
-                // Also, the lower bound is nonnegative and less than the upper bound.
+                // Also, 0 <= lower bound < upper bound.
                 let dense_slice =
                     unsafe { dense.get_unchecked(offset + 32 * k..offset + 32 * k + 32) };
+                // add offset block of dense vector to buffer
                 buffer[k] = add_i8_m256i(buffer[k], bytemuck::pod_read_unaligned(dense_slice));
             }
         }
+        // SAFETY: upper bound = 32*(i + AVX_BUFF_LEN) <= block_length <= output.len()
+        // due to the above assertions. Also, 0 <= lower bound < upper bound.
+        let output_slice = unsafe { output.get_unchecked_mut(32 * i..32 * i + 32 * AVX_BUFF_LEN) };
         // copy buffer contents to output slice
-        let output_slice = &mut output[32 * i..32 * i + 32 * AVX_BUFF_LEN];
         output_slice.copy_from_slice(bytemuck::cast_slice(&buffer[..]));
     }
 }
