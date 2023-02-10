@@ -100,13 +100,17 @@ pub struct DecoderCycle {
     #[getset(get = "pub")]
     e_out: Vec<Index>,
     #[getset(get_copy = "pub")]
-    cycle: Option<CycleIters>,
+    cycle: Option<CycleData>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CycleIters {
+pub struct CycleData {
     pub start: usize,
     pub length: usize,
+    pub weight: usize,
+    pub syndrome_weight: usize,
+    pub threshold: u8,
+    pub max_upc: u8,
 }
 
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
@@ -147,13 +151,29 @@ pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> 
         bf_iter_no_mask(key, &mut s, &mut e_out, thr);
         let e_out_supp = e_out.support();
         if let Some(start_iter) = e_out_cache.iter().position(|x| x == &e_out_supp) {
+            let weight = e_out
+                .contents()
+                .iter()
+                .zip(e_in.dense().contents())
+                .filter(|(&a, &b)| a ^ b)
+                .count();
+            let syndrome_weight = s.hamming_weight();
+            let max_upc = unsatisfied_parity_checks(key, &mut s)
+                .into_iter()
+                .flatten()
+                .max()
+                .unwrap_or(0);
             return DecoderCycle {
                 key: key.clone(),
                 e_in: e_in.clone(),
                 e_out: e_out_supp,
-                cycle: Some(CycleIters {
+                cycle: Some(CycleData {
                     start: start_iter,
                     length: current_iter.abs_diff(start_iter),
+                    weight,
+                    syndrome_weight,
+                    threshold: THRESHOLD_CACHE[syndrome_weight],
+                    max_upc,
                 }),
             };
         } else {
@@ -356,9 +376,13 @@ mod tests {
         );
         assert_eq!(
             cycle.cycle,
-            Some(CycleIters {
+            Some(CycleData {
                 start: 25,
-                length: 2
+                length: 2,
+                weight: 19,
+                syndrome_weight: 101,
+                threshold: 8,
+                max_upc: 11,
             })
         );
     }
