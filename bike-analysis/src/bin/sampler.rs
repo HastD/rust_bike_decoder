@@ -175,8 +175,8 @@ const fn _compile_time_assertions() {
         "SAMPLE_BLOCK_WEIGHT must be positive and less than SAMPLE_BLOCK_LENGTH"
     );
     const _: () = assert!(
-        (SAMPLE_BLOCK_WEIGHT + 1) / 2 + 1 <= u8::MAX as usize,
-        "SAMPLE_BLOCK_WEIGHT > 507 not supported"
+        SAMPLE_BLOCK_WEIGHT <= u8::MAX as usize,
+        "SAMPLE_BLOCK_WEIGHT > 255 not supported"
     );
     const _: () = assert!(2 * SAMPLE_BLOCK_LENGTH <= u32::MAX as usize);
 }

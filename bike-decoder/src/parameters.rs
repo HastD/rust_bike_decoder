@@ -25,8 +25,8 @@ const fn _compile_time_assertions() {
         "ERROR_WEIGHT must be positive and less than ROW_LENGTH"
     );
     const _: () = assert!(
-        (BLOCK_WEIGHT + 1) / 2 + 1 <= u8::MAX as usize,
-        "BLOCK_WEIGHT > 507 not supported"
+        BLOCK_WEIGHT <= u8::MAX as usize,
+        "BLOCK_WEIGHT > 255 not supported"
     );
     const _: () = assert!(BLOCK_LENGTH <= SIZE_AVX);
     const _: () = assert!(2 * SIZE_AVX <= u32::MAX as usize);
@@ -51,7 +51,7 @@ macro_rules! env_or_usize {
         use $crate::parameters::__macro::{option_env, parse_usize, usize, Option, Result};
         if let Option::Some(s) = option_env!($name) {
             match parse_usize(s) {
-                Result::Ok::<usize, _>(value) => value,
+                Result::<usize, _>::Ok(value) => value,
                 Result::Err(err) => err.panic(),
             }
         } else {

@@ -23,13 +23,19 @@ pub fn build_threshold_cache(r: usize, d: usize, t: usize) -> Result<Vec<u8>, Th
 }
 
 pub const fn bf_threshold_min(block_weight: usize) -> u8 {
-    assert!(block_weight <= 507, "Block weight > 507 not supported");
-    ((block_weight + 1) / 2) as u8
+    assert!(
+        block_weight <= u8::MAX as usize,
+        "Block weight > 255 not supported"
+    );
+    (block_weight as u8 + 1) / 2
 }
 
 pub const fn bf_masked_threshold(block_weight: usize) -> u8 {
-    assert!(block_weight <= 507, "Block weight > 507 not supported");
-    ((block_weight + 1) / 2 + 1) as u8
+    assert!(
+        block_weight <= u8::MAX as usize,
+        "Block weight > 255 not supported"
+    );
+    (block_weight as u8 + 1) / 2 + 1
 }
 
 fn big_binomial(n: usize, k: usize) -> Natural {

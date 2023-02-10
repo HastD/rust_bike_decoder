@@ -91,7 +91,7 @@ impl DecodingFailure {
     }
 }
 
-#[derive(Clone, CopyGetters, Debug, Getters, Serialize, Deserialize)]
+#[derive(Clone, CopyGetters, Debug, Getters, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DecoderCycle {
     #[getset(get = "pub")]
     key: Key,
@@ -103,11 +103,10 @@ pub struct DecoderCycle {
     cycle: Option<CycleIters>,
 }
 
-#[derive(Clone, Copy, CopyGetters, Debug, Serialize, Deserialize)]
-#[getset(get_copy = "pub")]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CycleIters {
-    start: usize,
-    length: usize,
+    pub start: usize,
+    pub length: usize,
 }
 
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
@@ -330,5 +329,37 @@ mod tests {
                 assert_eq!(&upc[..BLOCK_LENGTH], &[BLOCK_WEIGHT as u8; BLOCK_LENGTH]);
             }
         }
+    }
+
+    #[test]
+    fn bgf_cycle_example() {
+        assert_eq!((BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT), (587, 15, 18));
+        let key = Key::from_support(
+            [
+                93, 99, 105, 121, 126, 141, 156, 193, 194, 197, 264, 301, 360, 400, 429,
+            ],
+            [
+                100, 117, 189, 191, 211, 325, 340, 386, 440, 461, 465, 474, 534, 565, 578,
+            ],
+        )
+        .unwrap();
+        let e_in = SparseErrorVector::from_support([
+            16, 73, 89, 201, 346, 522, 547, 553, 574, 575, 613, 619, 637, 713, 955, 960, 983, 1008,
+        ])
+        .unwrap();
+        let cycle = find_bgf_cycle(&key, &e_in, 100);
+        assert_eq!(cycle.key, key);
+        assert_eq!(cycle.e_in, e_in);
+        assert_eq!(
+            cycle.e_out,
+            vec![67, 73, 201, 242, 459, 481, 501, 507, 547, 575, 637, 759, 922, 955, 1008]
+        );
+        assert_eq!(
+            cycle.cycle,
+            Some(CycleIters {
+                start: 25,
+                length: 2
+            })
+        );
     }
 }
