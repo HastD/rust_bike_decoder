@@ -5,11 +5,12 @@ use bike_decoder::{
     vectors::SparseErrorVector,
 };
 use bike_trials::{application, output::OutputTo, parallel, settings::SettingsBuilder};
+use hex::FromHex;
 
 #[test]
 fn main_single_threaded_test() {
     let seed =
-        Seed::try_from("b439d3f5b9f2d127effcc98ed2a70806441de9e5b3bc4f6d32ec2b963af03fee").unwrap();
+        Seed::from_hex("b439d3f5b9f2d127effcc98ed2a70806441de9e5b3bc4f6d32ec2b963af03fee").unwrap();
     let settings = SettingsBuilder::default()
         .num_trials(10_000)
         .output(OutputTo::Void)

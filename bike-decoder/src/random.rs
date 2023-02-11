@@ -3,6 +3,7 @@
 // This is a modified version of the implementation of rand::ThreadRng,
 // suitable for applications where reproducibility of the results is desired.
 
+use hex::{FromHex, ToHex};
 use once_cell::sync::OnceCell;
 use rand::{rngs::OsRng, RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -145,29 +146,32 @@ impl From<Seed> for SeedInner {
     }
 }
 
-impl TryFrom<&str> for Seed {
+impl FromHex for Seed {
     type Error = SeedFromHexError;
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        Ok(Self(SeedInner::from_hex(hex)?))
+    }
+}
 
-    fn try_from(value: &str) -> Result<Self, SeedFromHexError> {
-        let bytes = hex::decode(value)?;
-        let arr = SeedInner::try_from(&bytes[..])?;
-        Ok(Self(arr))
+impl ToHex for Seed {
+    fn encode_hex<T: std::iter::FromIterator<char>>(&self) -> T {
+        self.0.encode_hex()
+    }
+
+    fn encode_hex_upper<T: std::iter::FromIterator<char>>(&self) -> T {
+        self.0.encode_hex_upper()
     }
 }
 
 impl fmt::Display for Seed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
+        write!(f, "{}", self.encode_hex::<String>())
     }
 }
 
 #[derive(Debug, Error)]
-pub enum SeedFromHexError {
-    #[error("failed to decode hex string representing PRNG seed")]
-    HexDecodeError(#[from] hex::FromHexError),
-    #[error("PRNG seed must be 256 bits")]
-    SizeError(#[from] std::array::TryFromSliceError),
-}
+#[error("PRNG seed must be given by 256-bit hex string")]
+pub struct SeedFromHexError(#[from] pub hex::FromHexError);
 
 #[cfg(test)]
 mod tests {

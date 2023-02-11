@@ -8,6 +8,7 @@ use bike_decoder::{
 use clap::Parser;
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
+use hex::FromHex;
 use std::num::NonZeroU64;
 use thiserror::Error;
 
@@ -130,7 +131,7 @@ impl Settings {
                 .and_then(NonZeroU64::new),
             record_max: args.recordmax as usize,
             verbose: args.verbose,
-            seed: args.seed.as_deref().map(Seed::try_from).transpose()?,
+            seed: args.seed.map(Seed::from_hex).transpose()?,
             seed_index: args.seed_index.map(|seed_idx| {
                 if seed_idx >= 1 << 24 {
                     eprintln!("Warning: very large PRNG seed index will be slow to initialize.");

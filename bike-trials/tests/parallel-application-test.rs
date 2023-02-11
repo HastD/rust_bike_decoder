@@ -9,10 +9,11 @@ use bike_trials::{
     parallel,
     settings::{Settings, SettingsBuilder},
 };
+use hex::FromHex;
 
 fn multithreaded_example_settings() -> Settings {
     let seed =
-        Seed::try_from("0a85f4ae8350b3a3034145b19a8d7bfa11f0baeeae106f6812ddfd0e5890b61d").unwrap();
+        Seed::from_hex("0a85f4ae8350b3a3034145b19a8d7bfa11f0baeeae106f6812ddfd0e5890b61d").unwrap();
     SettingsBuilder::default()
         .num_trials(10_000)
         .output(OutputTo::Void)
