@@ -1,6 +1,6 @@
 use crate::{
     keys::Key,
-    ncw::TaggedErrorVector,
+    ncw::{NcwOverlaps, TaggedErrorVector},
     parameters::*,
     syndrome::Syndrome,
     threshold::{bf_masked_threshold, THRESHOLD_CACHE},
@@ -101,6 +101,8 @@ pub struct DecoderCycle {
     e_out: Vec<Index>,
     #[getset(get_copy = "pub")]
     cycle: Option<CycleData>,
+    #[getset(get_copy = "pub")]
+    ncw_overlaps: Option<NcwOverlaps>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,7 +139,12 @@ pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     (e_out, ws == 0)
 }
 
-pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> DecoderCycle {
+pub fn find_bgf_cycle(
+    key: &Key,
+    e_in: &SparseErrorVector,
+    max_iters: usize,
+    compute_ncw: bool,
+) -> DecoderCycle {
     const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
     let mut s = Syndrome::from_sparse(key, e_in);
     let mut e_out = ErrorVector::zero();
@@ -151,18 +158,22 @@ pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> 
         bf_iter_no_mask(key, &mut s, &mut e_out, thr);
         let e_out_supp = e_out.support();
         if let Some(start_iter) = e_out_cache.iter().position(|x| x == &e_out_supp) {
-            let weight = e_out
+            // diff = support of e_in - e_out
+            let diff: Vec<Index> = e_out
                 .contents()
                 .iter()
                 .zip(e_in.dense().contents())
-                .filter(|(&a, &b)| a ^ b)
-                .count();
+                .enumerate()
+                .filter_map(|(idx, (&a, &b))| (a ^ b).then_some(idx as Index))
+                .collect();
+            let weight = diff.len();
             let syndrome_weight = s.hamming_weight();
             let max_upc = unsatisfied_parity_checks(key, &mut s)
                 .into_iter()
                 .flatten()
                 .max()
                 .unwrap_or(0);
+            let ncw_overlaps = compute_ncw.then(|| NcwOverlaps::new(key, &diff));
             return DecoderCycle {
                 key: key.clone(),
                 e_in: e_in.clone(),
@@ -175,6 +186,7 @@ pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> 
                     threshold: THRESHOLD_CACHE[syndrome_weight],
                     max_upc,
                 }),
+                ncw_overlaps,
             };
         } else {
             e_out_cache.push(e_out_supp);
@@ -185,12 +197,13 @@ pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> 
         e_in: e_in.clone(),
         e_out: e_out.support(),
         cycle: None,
+        ncw_overlaps: None,
     }
 }
 
 pub fn unsatisfied_parity_checks(key: &Key, s: &mut Syndrome) -> [[u8; BLOCK_LENGTH]; 2] {
     // Duplicate the syndrome to precompute cyclic shifts and avoid modulo operations
-    s.duplicate_up_to(BLOCK_LENGTH);
+    s.duplicate_contents();
     let h_supp = [key.h0().support(), key.h1().support()];
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64"),
@@ -367,7 +380,7 @@ mod tests {
             16, 73, 89, 201, 346, 522, 547, 553, 574, 575, 613, 619, 637, 713, 955, 960, 983, 1008,
         ])
         .unwrap();
-        let cycle = find_bgf_cycle(&key, &e_in, 100);
+        let cycle = find_bgf_cycle(&key, &e_in, 100, true);
         assert_eq!(cycle.key, key);
         assert_eq!(cycle.e_in, e_in);
         assert_eq!(
@@ -383,6 +396,14 @@ mod tests {
                 syndrome_weight: 101,
                 threshold: 8,
                 max_upc: 11,
+            })
+        );
+        assert_eq!(
+            cycle.ncw_overlaps,
+            Some(NcwOverlaps {
+                c: 4,
+                n: 4,
+                two_n: 7
             })
         );
     }

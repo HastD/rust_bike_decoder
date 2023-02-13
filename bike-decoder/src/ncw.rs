@@ -286,12 +286,11 @@ pub fn near_codeword_max_overlap<const LEN: usize>(
         .unwrap_or(0)
 }
 
-#[derive(Clone, Copy, Debug, Default, Getters, Serialize, Deserialize, PartialEq, Eq)]
-#[getset(get_copy = "pub")]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NcwOverlaps {
-    c: usize,
-    n: usize,
-    two_n: usize,
+    pub c: usize,
+    pub n: usize,
+    pub two_n: usize,
 }
 
 impl NcwOverlaps {

@@ -5,16 +5,17 @@ pub fn find_cycles(
     decoding_failures: Vec<DecodingFailure>,
     parallel: bool,
     max_iters: usize,
+    ncw: bool,
 ) -> Vec<DecoderCycle> {
     if parallel {
         decoding_failures
             .into_par_iter()
-            .map(|df| decoder::find_bgf_cycle(df.key(), df.vector().vector(), max_iters))
+            .map(|df| decoder::find_bgf_cycle(df.key(), df.vector().vector(), max_iters, ncw))
             .collect()
     } else {
         decoding_failures
             .into_iter()
-            .map(|df| decoder::find_bgf_cycle(df.key(), df.vector().vector(), max_iters))
+            .map(|df| decoder::find_bgf_cycle(df.key(), df.vector().vector(), max_iters, ncw))
             .collect()
     }
 }

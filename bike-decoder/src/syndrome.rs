@@ -95,8 +95,9 @@ impl Syndrome {
         bytecount::count(bytes, 1_u8)
     }
 
-    pub fn duplicate_up_to(&mut self, length: usize) {
-        self.0.duplicate_up_to(length);
+    #[inline]
+    pub fn duplicate_contents(&mut self) {
+        self.0.duplicate_up_to(BLOCK_LENGTH);
     }
 
     pub fn recompute_flipped_bit(&mut self, key: &Key, block_idx: usize, pos: usize) {

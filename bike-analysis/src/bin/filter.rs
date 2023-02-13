@@ -37,6 +37,8 @@ enum Command {
     Cycles {
         #[arg(help = "Number of iterations to search for cycles")]
         iters: usize,
+        #[arg(long, help = "Classify e_in - e_out into near-codeword sets")]
+        ncw: bool,
     },
     /// Classifies decoding failures into near-codeword sets
     Ncw,
@@ -56,8 +58,8 @@ fn run(cli: Cli, decoding_failures: Vec<DecodingFailure>) -> AnalysisRecord {
             let data = find_absorbing(decoding_failures, cli.parallel, ncw);
             AnalysisResults::AbsorbingDecodingFailures { data }
         }
-        Command::Cycles { iters } => {
-            let data = find_cycles(decoding_failures, cli.parallel, iters);
+        Command::Cycles { iters, ncw } => {
+            let data = find_cycles(decoding_failures, cli.parallel, iters, ncw);
             AnalysisResults::DecoderCycles {
                 data,
                 iterations: iters,
