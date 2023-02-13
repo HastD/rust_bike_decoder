@@ -9,7 +9,7 @@ rust-version = "1.66"
 [dependencies]
 bytecount = { version = "0.6", features = ["runtime-dispatch-simd"] }
 bytemuck = "1.12.3"
-clap = { version = "4", default-features = false }
+clap = { version = "4", default-features = false, features = ["std"] }
 getset = "0.1"
 hex = { version = "0.4", features = ["serde"] }
 konst = { version = "0.3", default-features = false, features = ["parsing"] }
