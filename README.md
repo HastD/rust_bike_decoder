@@ -112,9 +112,9 @@ cat results.json | jq -c .decoding_failures | filter absorbing
 
 Note that `absorbing` analyzes the *difference* `e_in - e_out` between the input error vector and the output of the BGF decoder, not the error vector itself. If the `--ncw` flag is set, absorbing sets found in this way will also be classified into near-codeword sets.
 
-The `cycles` command re-runs the BGF decoder on the input vectors for a specified number of iterations, searching for *cycles* in the decoding process. It attaches the data of whether a cycle was found, and the iterations at which it was found if so. Note that successful decoding does count as a cycle (of length 1), and may be observed even if the original vector was counted as a decoding failure due to running for more iterations.
+The `cycles` command re-runs the BGF decoder on the input vectors for a specified number of iterations, searching for *cycles* in the decoding process. It attaches the data of whether a cycle was found, and the iterations at which it was found if so. Note that successful decoding does count as a cycle (of length 1), and may be observed even if the original vector was counted as a decoding failure due to running for more iterations. If the `--ncw` flag is set, the differences `e_in - e_out` will also be classified into near-codeword sets.
 
-The `ncw` command classifies supports of decoding failure vectors into near-codeword sets.
+The `ncw` command classifies supports of decoding failure vectors (that is, `e_in`, *not* `e_in - e_out`) into near-codeword sets.
 
 ### `sampler`
 
