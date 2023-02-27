@@ -154,11 +154,11 @@ impl FromHex for Seed {
 }
 
 impl ToHex for Seed {
-    fn encode_hex<T: std::iter::FromIterator<char>>(&self) -> T {
+    fn encode_hex<T: FromIterator<char>>(&self) -> T {
         self.0.encode_hex()
     }
 
-    fn encode_hex_upper<T: std::iter::FromIterator<char>>(&self) -> T {
+    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
         self.0.encode_hex_upper()
     }
 }

@@ -132,22 +132,23 @@ pub fn run_parallel(settings: &Settings) -> Result<DataRecord, anyhow::Error> {
     // Set up channels to receive decoding results and progress updates
     let (tx_results, rx_results) = channel();
     let (tx_progress, rx_progress) = channel();
-    let settings_clone = settings.clone();
     // Start main trial loop in separate thread
-    let trial_thread = std::thread::spawn(move || {
-        let settings = settings_clone;
+    let trial_thread = std::thread::spawn({
+        let settings = settings.clone();
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(settings.threads())
             .build()?;
-        pool.install(|| {
-            trial_loop(
-                settings.trial_settings(),
-                settings.num_trials(),
-                settings.save_frequency(),
-                &tx_results,
-                &tx_progress,
-            )
-        })
+        move || {
+            pool.install(|| {
+                trial_loop(
+                    settings.trial_settings(),
+                    settings.num_trials(),
+                    settings.save_frequency(),
+                    &tx_results,
+                    &tx_progress,
+                )
+            })
+        }
     });
     // Process messages from trial_loop
     let data = record_trial_results(settings, rx_results, rx_progress, start_time)

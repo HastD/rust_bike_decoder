@@ -58,15 +58,15 @@ pub fn check_writable(output: &OutputTo, overwrite: bool) -> Result<(), OutputEr
 
 #[derive(Debug, Error)]
 pub enum OutputError {
-    #[error("Output file path should be accessible")]
+    #[error("Output file path should be accessible: {0}")]
     Inaccessible(io::Error),
-    #[error("Output file metadata should be readable")]
+    #[error("Output file metadata should be readable: {0}")]
     BadMetadata(io::Error),
-    #[error("Should be able to back up existing file")]
+    #[error("Should be able to back up existing file: {0}")]
     FailedBackup(io::Error),
-    #[error("Output stream should be writable")]
+    #[error("Output stream should be writable: {0}")]
     NotWritable(io::Error),
-    #[error("data should be writable as JSON")]
+    #[error("data should be writable as JSON: {0}")]
     JsonNotWritable(serde_json::Error),
 }
 
