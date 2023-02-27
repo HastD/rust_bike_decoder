@@ -115,6 +115,21 @@ pub struct CycleData {
     pub max_upc: u8,
 }
 
+impl DecoderCycle {
+    pub fn diff(&self) -> Vec<Index> {
+        let mut diff = self.e_out.clone();
+        for entry in self.e_in.support() {
+            if let Some(index) = diff.iter().position(|item| *item == *entry) {
+                diff.swap_remove(index);
+            } else {
+                diff.push(*entry);
+            }
+        }
+        diff.sort_unstable();
+        diff
+    }
+}
+
 pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
     const BF_MASKED_THRESHOLD: u8 = bf_masked_threshold(BLOCK_WEIGHT);
     let mut e_out = ErrorVector::zero();

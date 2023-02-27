@@ -1,9 +1,8 @@
 use crate::{
     counter::IndexCounter,
-    decoder::{bgf_decoder, DecodingFailure},
+    decoder::{find_bgf_cycle, DecodingFailure},
     keys::QuasiCyclic,
     ncw::NcwOverlaps,
-    syndrome::Syndrome,
     vectors::Index,
 };
 use getset::Getters;
@@ -69,12 +68,12 @@ pub fn tanner_graph_edges<const WEIGHT: usize, const LENGTH: usize>(
     let mut edges = vec![[(VariableNode(0), CheckNode(0)); WEIGHT]; 2 * LENGTH];
     for k in 0..LENGTH {
         for (i, &b) in key.h0().support().iter().enumerate() {
-            let var = (b as usize + k) % LENGTH;
-            edges[var][i] = (VariableNode(var as Index), CheckNode(k as Index));
+            let chk = (b as usize + k) % LENGTH;
+            edges[k][i] = (VariableNode(k as Index), CheckNode(chk as Index));
         }
         for (i, &b) in key.h1().support().iter().enumerate() {
-            let var = (b as usize + k) % LENGTH + LENGTH;
-            edges[var][i] = (VariableNode(var as Index), CheckNode(k as Index));
+            let chk = (b as usize + k) % LENGTH;
+            edges[k + LENGTH][i] = (VariableNode((k + LENGTH) as Index), CheckNode(chk as Index));
         }
     }
     edges
@@ -165,20 +164,16 @@ impl AbsorbingDecodingFailure {
         let key = df.key();
         let edges = TannerGraphEdges::new(key);
         let e_supp = df.vector().vector();
-        let e_in = e_supp.dense();
-        let mut syn = Syndrome::from_sparse(key, e_supp);
-        let (e_out, _) = bgf_decoder(key, &mut syn);
-        let supp = (e_in - e_out).support();
-        if is_absorbing_subgraph(&edges, &supp) {
-            let (_, _, odd_check_nodes) = odd_check_node_neighbors(&edges, &supp);
-            let overlaps = if compute_overlaps {
-                Some(NcwOverlaps::new(key, &supp))
-            } else {
-                None
-            };
+        // Compute stable output of decoder
+        let cycle = find_bgf_cycle(key, e_supp, usize::MAX, compute_overlaps);
+        // diff = support of e_in - e_out
+        let diff = cycle.diff();
+        if is_absorbing_subgraph(&edges, &diff) {
+            let (_, _, odd_check_nodes) = odd_check_node_neighbors(&edges, &diff);
+            let overlaps = compute_overlaps.then(|| NcwOverlaps::new(key, &diff));
             Some(Self {
                 df,
-                supp,
+                supp: diff,
                 odd_check_nodes,
                 overlaps,
             })
@@ -206,9 +201,9 @@ mod tests {
     #[test]
     fn absorbing_non_example() {
         let df: DecodingFailure = serde_json::from_str(
-            r#"{"h0":[337,180,234,163,573,63,276,451,428,57,213,41,158,194,485],"h1":[260,528,580,
-            127,537,84,404,218,374,394,509,194,382,55,185],"e_supp":[1078,283,10,62,460,806,715,
-            157,1096,849,503,996,533,1004,564,991,858,916]}"#,
+            r#"{"h0":[93,99,105,121,126,141,156,193,194,197,264,301,360,400,429],"h1":[100,117,
+            189,191,211,325,340,386,440,461,465,474,534,565,578],"e_supp":[30,91,310,337,487,597,
+            616,712,766,816,923,933,956,1062,1069,1131,1134,1152]}"#,
         )
         .unwrap();
         assert!(AbsorbingDecodingFailure::new(df, false).is_none());
