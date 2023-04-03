@@ -107,11 +107,9 @@ pub struct Settings {
     overwrite: bool,
 }
 
-impl Settings {
-    const MIN_SAVE_FREQUENCY: u64 = 10000;
-    const MAX_THREAD_COUNT: usize = 1024;
-
-    pub fn from_args(args: Args) -> Result<Self, SettingsError> {
+impl TryFrom<Args> for Settings {
+    type Error = SettingsError;
+    fn try_from(args: Args) -> Result<Self, Self::Error> {
         let settings = Self {
             num_trials: args.number as u64,
             trial_settings: TrialSettings::new(
@@ -153,6 +151,11 @@ impl Settings {
         };
         Ok(settings)
     }
+}
+
+impl Settings {
+    const MIN_SAVE_FREQUENCY: u64 = 10000;
+    const MAX_THREAD_COUNT: usize = 1024;
 
     #[inline]
     pub fn key_filter(&self) -> KeyFilter {
@@ -284,7 +287,7 @@ mod tests {
         };
         let mut args2 = args.clone();
         args2.savefreq = None;
-        let settings = Settings::from_args(args).unwrap();
+        let settings = Settings::try_from(args).unwrap();
         assert_eq!(settings.num_trials, 17500);
         assert_eq!(settings.trial_settings.key_filter, KeyFilter::NonWeak(4));
         assert_eq!(
@@ -319,7 +322,7 @@ mod tests {
             OutputTo::File(PathBuf::from("test/path/to/file.json"))
         );
         assert!(settings.overwrite);
-        let settings2 = Settings::from_args(args2).unwrap();
+        let settings2 = Settings::try_from(args2).unwrap();
         assert_eq!(settings2.save_frequency(), settings2.num_trials());
     }
 

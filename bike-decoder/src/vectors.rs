@@ -28,6 +28,7 @@ pub enum InvalidSupport {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[repr(transparent)]
+#[serde(transparent)]
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     #[serde_as(as = "[_; WEIGHT]")] [Index; WEIGHT],
 );
