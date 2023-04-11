@@ -22,6 +22,8 @@ pub enum InvalidSupport {
     OutOfBounds(usize),
     #[error("support indices must all be distinct")]
     RepeatedIndex,
+    #[error("support must be of length {0}")]
+    WrongLength(usize),
 }
 
 // Sparse vector of fixed weight and length over GF(2)
@@ -32,6 +34,15 @@ pub enum InvalidSupport {
 pub struct SparseVector<const WEIGHT: usize, const LENGTH: usize>(
     #[serde_as(as = "[_; WEIGHT]")] [Index; WEIGHT],
 );
+
+impl<const WEIGHT: usize, const LENGTH: usize> TryFrom<&[Index]> for SparseVector<WEIGHT, LENGTH> {
+    type Error = InvalidSupport;
+    fn try_from(supp: &[Index]) -> Result<Self, Self::Error> {
+        let supp =
+            <[Index; WEIGHT]>::try_from(supp).map_err(|_| InvalidSupport::WrongLength(WEIGHT))?;
+        Self::from_support(supp)
+    }
+}
 
 impl<const WEIGHT: usize, const LENGTH: usize> SparseVector<WEIGHT, LENGTH> {
     pub fn from_support(supp: [Index; WEIGHT]) -> Result<Self, InvalidSupport> {

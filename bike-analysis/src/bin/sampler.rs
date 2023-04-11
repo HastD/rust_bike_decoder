@@ -1,29 +1,30 @@
 use anyhow::{anyhow, Context};
 use bike_analysis::{
-    absorbing::{enumerate_absorbing_sets, sample_absorbing_sets},
-    classify::{classify_enumerate, classify_sample},
     output::write_json,
+    record::{AnalysisResult, SampleAnalysis},
 };
-use bike_decoder::{env_or_usize, keys::QuasiCyclic, random::custom_thread_rng};
-use clap::{ArgGroup, Parser, Subcommand};
+use bike_decoder::{
+    env_or_usize, graphs::TannerGraphEdges, keys::QuasiCyclic, random::custom_thread_rng,
+    vectors::Index,
+};
+use clap::{ArgGroup, Parser};
+use itertools::Itertools;
 use malachite::num::arithmetic::traits::CheckedBinomialCoefficient;
+use rand::seq::IteratorRandom;
+use rayon::prelude::*;
 use std::time::Instant;
 
 // Key constants used for sampling
 const SAMPLE_BLOCK_WEIGHT: usize = env_or_usize!("SAMPLE_BLOCK_WEIGHT", 5);
 const SAMPLE_BLOCK_LENGTH: usize = env_or_usize!("SAMPLE_BLOCK_LENGTH", 19);
-type EnumKey = QuasiCyclic<SAMPLE_BLOCK_WEIGHT, SAMPLE_BLOCK_LENGTH>;
+type SampleKey = QuasiCyclic<SAMPLE_BLOCK_WEIGHT, SAMPLE_BLOCK_LENGTH>;
 type AnalysisRecord =
     bike_analysis::record::AnalysisRecord<SAMPLE_BLOCK_WEIGHT, SAMPLE_BLOCK_LENGTH>;
-type AnalysisResults =
-    bike_analysis::record::AnalysisResults<SAMPLE_BLOCK_WEIGHT, SAMPLE_BLOCK_LENGTH>;
 
 #[derive(Clone, Debug, Parser)]
 #[command(about = "Generates and analyzes support vectors", long_about = None)]
 #[command(group(ArgGroup::new("num").required(true).args(["number", "enumerate"])))]
 struct Cli {
-    #[command(subcommand)]
-    command: Command,
     #[arg(
         short,
         long,
@@ -38,25 +39,22 @@ struct Cli {
     enumerate: bool,
     #[arg(short = 'N', long, help = "Number of samples")]
     number: Option<f64>,
+    #[arg(short, long, help = "Search for absorbing sets")]
+    absorbing: bool,
+    #[arg(long, help = "Classify vectors in near-codeword sets")]
+    ncw: bool,
     #[arg(short, long, help = "Run in parallel using multiple threads")]
     parallel: bool,
     #[arg(short, long, help = "Weight of absorbing sets")]
     weight: usize,
 }
 
-#[derive(Copy, Clone, Debug, Subcommand)]
-enum Command {
-    /// Searches for absorbing sets
-    Absorbing,
-    /// Generates and classifies vectors in near-codeword sets
-    Ncw,
-}
-
 #[derive(Clone, Debug)]
 struct Settings {
-    command: Command,
-    key: EnumKey,
+    key: SampleKey,
     sample_method: SampleMethod,
+    ncw: bool,
+    absorbing: bool,
     parallel: bool,
     weight: usize,
 }
@@ -65,9 +63,10 @@ impl TryFrom<Cli> for Settings {
     type Error = anyhow::Error;
     fn try_from(cli: Cli) -> Result<Self, Self::Error> {
         let mut settings = Self {
-            command: cli.command,
             key: parse_key_or_random(cli.key.as_deref())?,
             sample_method: SampleMethod::new(cli.number, cli.enumerate)?,
+            ncw: cli.ncw,
+            absorbing: cli.absorbing,
             parallel: cli.parallel,
             weight: cli.weight,
         };
@@ -113,45 +112,92 @@ impl SampleMethod {
     }
 }
 
-fn parse_key_or_random(s: Option<&str>) -> Result<EnumKey, anyhow::Error> {
+fn parse_key_or_random(s: Option<&str>) -> Result<SampleKey, anyhow::Error> {
     let key = s
         .map(serde_json::from_str)
         .transpose()
         .context("--key should be valid JSON representing a key")?
-        .unwrap_or_else(|| EnumKey::random(&mut custom_thread_rng()));
+        .unwrap_or_else(|| SampleKey::random(&mut custom_thread_rng()));
     Ok(key)
+}
+
+fn sample_set<const WT: usize, const LEN: usize>(
+    key: &QuasiCyclic<WT, LEN>,
+    weight: usize,
+    num_samples: usize,
+    parallel: bool,
+) -> Vec<SampleAnalysis<WT, LEN>> {
+    let edges = TannerGraphEdges::new(key);
+    let n = 2 * LEN as Index;
+    if parallel {
+        (0..num_samples)
+            .into_par_iter()
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), weight))
+            .map(|supp| SampleAnalysis::with_edges(key.clone(), supp, edges.clone()))
+            .collect()
+    } else {
+        (0..num_samples)
+            .map(|_| (0..n).choose_multiple(&mut custom_thread_rng(), weight))
+            .map(|supp| SampleAnalysis::with_edges(key.clone(), supp, edges.clone()))
+            .collect()
+    }
+}
+
+fn enumerate_set<const WT: usize, const LEN: usize>(
+    key: &QuasiCyclic<WT, LEN>,
+    weight: usize,
+    parallel: bool,
+) -> Vec<SampleAnalysis<WT, LEN>> {
+    let edges = TannerGraphEdges::new(key);
+    let n = 2 * LEN as Index;
+    let combinations = (0..n).combinations(weight);
+    if parallel {
+        combinations
+            .par_bridge()
+            .map(|supp| SampleAnalysis::with_edges(key.clone(), supp, edges.clone()))
+            .collect()
+    } else {
+        combinations
+            .map(|supp| SampleAnalysis::with_edges(key.clone(), supp, edges.clone()))
+            .collect()
+    }
 }
 
 fn run(settings: Settings) -> AnalysisRecord {
     let start_time = Instant::now();
     let num_processed = settings.count();
     let Settings {
-        command,
         key,
         sample_method,
         weight,
+        ncw,
+        absorbing,
         parallel,
     } = settings;
-    let results = match command {
-        Command::Absorbing => {
-            let data = match sample_method {
-                SampleMethod::Sample(num_samples) => {
-                    sample_absorbing_sets(&key, weight, num_samples, parallel)
-                }
-                SampleMethod::Enumerate => enumerate_absorbing_sets(&key, weight, parallel),
-            };
-            AnalysisResults::AbsorbingSets { data }
-        }
-        Command::Ncw => {
-            let data = match sample_method {
-                SampleMethod::Sample(num_samples) => {
-                    classify_sample(&key, weight, num_samples, parallel)
-                }
-                SampleMethod::Enumerate => classify_enumerate(&key, weight, parallel),
-            };
-            AnalysisResults::NcwClassified { data }
-        }
+    let mut results = match sample_method {
+        SampleMethod::Sample(num_samples) => sample_set(&key, weight, num_samples, parallel),
+        SampleMethod::Enumerate => enumerate_set(&key, weight, parallel),
     };
+    if parallel {
+        results.par_iter_mut().for_each(|sample| {
+            if ncw {
+                sample.compute_overlaps();
+            }
+            if absorbing {
+                sample.compute_absorbing();
+            }
+        });
+    } else {
+        results.iter_mut().for_each(|sample| {
+            if ncw {
+                sample.compute_overlaps();
+            }
+            if absorbing {
+                sample.compute_absorbing();
+            }
+        });
+    }
+    let results = results.into_iter().map(AnalysisResult::Sample).collect();
     AnalysisRecord::new(
         Some(key),
         weight,

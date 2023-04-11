@@ -81,6 +81,15 @@ pub struct TaggedErrorVector {
     source: ErrorVectorSource,
 }
 
+impl From<SparseErrorVector> for TaggedErrorVector {
+    fn from(vector: SparseErrorVector) -> Self {
+        Self {
+            vector,
+            source: Default::default(),
+        }
+    }
+}
+
 impl TaggedErrorVector {
     #[inline]
     pub fn take_vector(self) -> (SparseErrorVector, ErrorVectorSource) {
@@ -223,7 +232,7 @@ fn sample_2n<const WEIGHT: usize, const LENGTH: usize>(
 fn patterns_c<const WT: usize, const LEN: usize>(key: &QuasiCyclic<WT, LEN>) -> Vec<Vec<Index>> {
     let mut codeword = key.h1().support().to_vec();
     let mut h0 = key.h0().support().to_vec();
-    let r = BLOCK_LENGTH as Index;
+    let r = LEN as Index;
     for entry in h0.iter_mut() {
         *entry += r;
     }
@@ -290,6 +299,7 @@ pub fn near_codeword_max_overlap<const LEN: usize>(
 pub struct NcwOverlaps {
     pub c: usize,
     pub n: usize,
+    #[serde(rename = "2n")]
     pub two_n: usize,
 }
 
@@ -389,6 +399,21 @@ mod tests {
         let mut supp = [2, 3, 5, 7, 11, 13, 17, 19];
         shift_blockwise::<7>(&mut supp, 4);
         assert_eq!(supp, [6, 0, 2, 11, 8, 10, 14, 16]);
+    }
+
+    #[test]
+    fn small_key_overlaps() {
+        let key =
+            QuasiCyclic::<5, 19>::from_support([2, 4, 13, 16, 17], [3, 4, 5, 13, 14]).unwrap();
+        let supp = [19, 23, 24];
+        assert_eq!(
+            NcwOverlaps::new(&key, &supp),
+            NcwOverlaps {
+                c: 2,
+                n: 2,
+                two_n: 3
+            }
+        );
     }
 
     #[test]

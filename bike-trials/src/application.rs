@@ -30,7 +30,7 @@ where
     } else {
         TaggedErrorVector::random(rng)
     };
-    DecodingResult::from(key, tagged_error_vector)
+    DecodingResult::from_key_vector(key, tagged_error_vector)
 }
 
 #[inline]

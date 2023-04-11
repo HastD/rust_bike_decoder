@@ -1,8 +1,7 @@
 use crate::{
     counter::IndexCounter,
-    decoder::{find_bgf_cycle, DecodingFailure},
+    decoder::{find_bgf_cycle, DecodingResult},
     keys::QuasiCyclic,
-    ncw::NcwOverlaps,
     vectors::Index,
 };
 use getset::Getters;
@@ -152,40 +151,42 @@ pub fn is_absorbing<const WEIGHT: usize, const LENGTH: usize>(
 
 #[derive(Debug, Clone, Getters, Serialize, Deserialize)]
 #[getset(get = "pub")]
-pub struct AbsorbingDecodingFailure {
-    df: DecodingFailure,
+pub struct AbsorbingDecodingResult {
+    df: DecodingResult,
     supp: Vec<Index>,
     odd_check_nodes: Vec<CheckNode>,
-    overlaps: Option<NcwOverlaps>,
 }
 
-impl AbsorbingDecodingFailure {
-    pub fn new(df: DecodingFailure, compute_overlaps: bool) -> Option<Self> {
+impl AbsorbingDecodingResult {
+    pub fn new(df: DecodingResult) -> Option<Self> {
         let key = df.key();
         let edges = TannerGraphEdges::new(key);
         let e_supp = df.vector().vector();
         // Compute stable output of decoder
-        let cycle = find_bgf_cycle(key, e_supp, usize::MAX, compute_overlaps);
+        let cycle = find_bgf_cycle(key, e_supp, usize::MAX);
         // diff = support of e_in - e_out
         let diff = cycle.diff();
         if is_absorbing_subgraph(&edges, &diff) {
             let (_, _, odd_check_nodes) = odd_check_node_neighbors(&edges, &diff);
-            let overlaps = compute_overlaps.then(|| NcwOverlaps::new(key, &diff));
             Some(Self {
                 df,
                 supp: diff,
                 odd_check_nodes,
-                overlaps,
             })
         } else {
             None
         }
+    }
+
+    pub fn take_odd_check_nodes(self) -> Vec<CheckNode> {
+        self.odd_check_nodes
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decoder::DecodingFailure;
 
     #[test]
     fn absorbing_example() {
@@ -195,7 +196,7 @@ mod tests {
             481,527,558,662,724,772,1008,1011,1038,1072]}"#,
         )
         .unwrap();
-        AbsorbingDecodingFailure::new(df, false).unwrap();
+        AbsorbingDecodingResult::new(df.into()).unwrap();
     }
 
     #[test]
@@ -206,6 +207,6 @@ mod tests {
             616,712,766,816,923,933,956,1062,1069,1131,1134,1152]}"#,
         )
         .unwrap();
-        assert!(AbsorbingDecodingFailure::new(df, false).is_none());
+        assert!(AbsorbingDecodingResult::new(df.into()).is_none());
     }
 }
