@@ -335,6 +335,22 @@ impl<const LENGTH: usize> Default for DenseVector<LENGTH> {
     }
 }
 
+impl<const LENGTH: usize> TryFrom<&[Index]> for DenseVector<LENGTH> {
+    type Error = InvalidSupport;
+    fn try_from(supp: &[Index]) -> Result<Self, Self::Error> {
+        let mut v = Self::zero();
+        for idx in supp {
+            let idx = *idx as usize;
+            if idx < LENGTH {
+                v.flip(idx);
+            } else {
+                return Err(InvalidSupport::OutOfBounds(idx));
+            }
+        }
+        Ok(v)
+    }
+}
+
 impl<const LENGTH: usize> DenseVector<LENGTH> {
     pub fn zero() -> Self {
         Self([false; LENGTH])

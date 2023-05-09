@@ -149,3 +149,37 @@ The fixed key and the results are sent in JSON format to `stdout`. Note that thi
 ```sh
 sampler --parallel -N=1e3 -w=6 --key='{"h0": [...], "h1": [...]}' --absorbing --ncw 
 ```
+
+## Python bindings
+
+The core decoder functions have [PyO3](https://github.com/PyO3/pyo3) bindings to allow them to be used in Python or SageMath. To build the Python module, you will need to install [maturin](https://github.com/PyO3/maturin):
+
+```sh
+pip install maturin --user
+```
+
+Then, from the root directory of this repository, run
+
+```sh
+maturin build -m bike-decoder-pyo3/Cargo.toml
+# replace [...] with the file name -- the exact name depends on your operating system
+pip install target/wheels/bike_decoder_pyo3-[...].whl --user --force-reinstall
+# or if you want to use this with SageMath:
+sage --pip install target/wheels/bike_decoder_pyo3-[...].whl --user --force-reinstall
+```
+
+You should now be able write Python code like:
+
+```py
+from bike_decoder_pyo3 import bgf_decoder, syndrome, random_non_weak_key, random_error_support
+
+(h0, h1) = random_non_weak_key(3)
+e_in = random_error_support()
+s = syndrome(h0, h1, e_in)
+(e_out, success) = bgf_decoder(h0, h1, s)
+e_out_supp = [i for i in range(len(e_out)) if e_out[i]]
+print("support of e_in: ", e_in)
+print("support of e_out: ", e_out_supp)
+```
+
+Note: There is significant overhead to the use of these Python bindings, so while they are much faster than pure Python code, they are not ideal for large-scale data collection.

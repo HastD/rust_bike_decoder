@@ -1,0 +1,14 @@
+[package]
+name = "bike-decoder-pyo3"
+version = "0.1.0"
+edition = "2021"
+description = "PyO3 bindings for bike-decoder"
+license = "MIT"
+
+[lib]
+name = "bike_decoder_pyo3"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bike-decoder = { path = "../bike-decoder" }
+pyo3 = { version = "0.18.3", features = ["abi3-py37"] }
