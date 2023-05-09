@@ -3,12 +3,18 @@ use crate::{
     ncw::TaggedErrorVector,
     parameters::*,
     syndrome::Syndrome,
-    threshold::{bf_masked_threshold, THRESHOLD_CACHE},
+    threshold::{bf_masked_threshold, build_threshold_cache},
     vectors::{ErrorVector, Index, SparseErrorVector},
 };
 use getset::{CopyGetters, Getters};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
+    build_threshold_cache(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT)
+        .expect("Must be able to initialize threshold cache")
+});
 
 #[derive(Clone, CopyGetters, Debug, Getters, Serialize, Deserialize)]
 pub struct DecodingResult {
@@ -328,7 +334,6 @@ pub fn bf_masked_iter(
     any(target_arch = "x86", target_arch = "x86_64"),
     target_feature = "avx2"
 ))]
-#[allow(clippy::needless_range_loop)]
 fn multiply_avx2(output: &mut [u8], sparse: &[Index], dense: &[bool]) {
     use safe_arch::{add_i8_m256i, zeroed_m256i};
     const AVX_BUFF_LEN: usize = 8;
@@ -344,14 +349,13 @@ fn multiply_avx2(output: &mut [u8], sparse: &[Index], dense: &[bool]) {
         // reset buffer to zero
         buffer.iter_mut().for_each(|x| *x = zeroed_m256i());
         for offset in sparse.iter().map(|idx| *idx as usize + 32 * i) {
+            // SAFETY: upper bound <= idx + 32*(i + AVX_BUFF_LEN) <= idx + block_length
+            // < dense.len() due to the above assertions. Also, 0 <= lower bound < upper bound.
+            let dense_slice = unsafe { dense.get_unchecked(offset..offset + 32 * AVX_BUFF_LEN) };
             for k in 0..AVX_BUFF_LEN {
-                // SAFETY: upper bound = idx + 32*(i + k + 1) <= idx + 32*(i + AVX_BUFF_LEN)
-                // <= idx + block_length < dense.len() due to the above assertions.
-                // Also, 0 <= lower bound < upper bound.
-                let dense_slice =
-                    unsafe { dense.get_unchecked(offset + 32 * k..offset + 32 * k + 32) };
+                let addend = bytemuck::pod_read_unaligned(&dense_slice[32 * k..32 * k + 32]);
                 // add offset block of dense vector to buffer
-                buffer[k] = add_i8_m256i(buffer[k], bytemuck::pod_read_unaligned(dense_slice));
+                buffer[k] = add_i8_m256i(buffer[k], addend);
             }
         }
         // SAFETY: upper bound = 32*(i + AVX_BUFF_LEN) <= block_length <= output.len()

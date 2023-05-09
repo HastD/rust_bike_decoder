@@ -28,7 +28,7 @@ thread_local! {
         let seed = get_or_insert_global_seed(None);
         let rng = get_rng_from_seed(seed, current_thread_id());
         Rc::new(UnsafeCell::new(rng))
-    }
+    };
 }
 
 pub fn get_rng_from_seed(seed: Seed, jumps: u32) -> Xoshiro256PlusPlus {

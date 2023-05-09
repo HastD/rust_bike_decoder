@@ -3,15 +3,7 @@ use malachite::{
     rounding_modes::RoundingMode,
     Natural, Rational,
 };
-use once_cell::sync::Lazy;
 use thiserror::Error;
-
-use crate::parameters::{BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT};
-
-pub static THRESHOLD_CACHE: Lazy<Vec<u8>> = Lazy::new(|| {
-    build_threshold_cache(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT)
-        .expect("Must be able to initialize threshold cache")
-});
 
 pub fn build_threshold_cache(r: usize, d: usize, t: usize) -> Result<Vec<u8>, ThresholdError> {
     let x = compute_x(r, d, t);
@@ -133,6 +125,7 @@ pub enum ThresholdError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parameters::{BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT};
 
     #[test]
     fn known_x() {
@@ -144,6 +137,7 @@ mod tests {
 
     #[test]
     fn known_thresholds() {
+        let cache = build_threshold_cache(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT).unwrap();
         let (r, d, t) = (587, 15, 18);
         let thresholds_no_min = [
             1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
@@ -174,7 +168,7 @@ mod tests {
         for ws in 0..=r {
             let thresh = exact_threshold_ineq(ws, r, d, t, Some(x)).unwrap();
             assert_eq!(thresh, thresholds_no_min[ws].max(bf_threshold_min(d)));
-            assert_eq!(thresh, THRESHOLD_CACHE[ws]);
+            assert_eq!(thresh, cache[ws]);
         }
     }
 
