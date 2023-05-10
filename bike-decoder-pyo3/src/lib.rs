@@ -1,7 +1,7 @@
 use bike_decoder::{
     decoder,
     keys::Key,
-    parameters::{BLOCK_LENGTH, BLOCK_WEIGHT, ROW_LENGTH},
+    parameters::*,
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
@@ -10,6 +10,15 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 /// Optimized, non-cryptographic Rust implementation of BGF decoder used in BIKE.
 #[pymodule]
 fn bike_decoder_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
+    // Constants from bike_decoder::parameters
+    m.add("BLOCK_LENGTH", BLOCK_LENGTH)?;
+    m.add("BLOCK_WEIGHT", BLOCK_WEIGHT)?;
+    m.add("ERROR_WEIGHT", ERROR_WEIGHT)?;
+    m.add("NB_ITER", NB_ITER)?;
+    m.add("GRAY_THRESHOLD_DIFF", GRAY_THRESHOLD_DIFF)?;
+    m.add("ROW_LENGTH", ROW_LENGTH)?;
+    m.add("ROW_WEIGHT", ROW_WEIGHT)?;
+    // Functions providing a Python interface to the BGF decoder and related utilities
     m.add_function(wrap_pyfunction!(bgf_decoder, m)?)?;
     m.add_function(wrap_pyfunction!(random_key, m)?)?;
     m.add_function(wrap_pyfunction!(random_non_weak_key, m)?)?;
