@@ -1,11 +1,13 @@
 use bike_decoder::{
     decoder,
     keys::Key,
+    ncw::NcwOverlaps,
     parameters::*,
     syndrome::Syndrome,
     vectors::{ErrorVector, SparseErrorVector},
 };
 use pyo3::{exceptions::PyValueError, prelude::*};
+use std::collections::HashMap;
 
 /// Optimized, non-cryptographic Rust implementation of BGF decoder used in BIKE.
 #[pymodule]
@@ -28,6 +30,9 @@ fn bike_decoder_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bf_iter_no_mask, m)?)?;
     m.add_function(wrap_pyfunction!(bf_masked_iter, m)?)?;
     m.add_function(wrap_pyfunction!(unsatisfied_parity_checks, m)?)?;
+    m.add_function(wrap_pyfunction!(exact_threshold, m)?)?;
+    m.add_function(wrap_pyfunction!(ncw_overlaps, m)?)?;
+    m.add_function(wrap_pyfunction!(is_absorbing, m)?)?;
     Ok(())
 }
 
@@ -151,6 +156,40 @@ fn unsatisfied_parity_checks(
     let mut s = syndrome_from_vec(s)?;
     let [upc0, upc1] = decoder::unsatisfied_parity_checks(&key, &mut s);
     Ok((Vec::from(upc0), Vec::from(upc1)))
+}
+
+/// Computes the exact threshold used in the bit-flipping algorithm for syndrome weight `ws`,
+/// block length `r`, block weight `d`, and error weight `t`. The parameters `(r, d, t)` default
+/// to the values `(BLOCK_LENGTH, BLOCK_WEIGHT, ERROR_WEIGHT)` set at compile-time.
+#[pyfunction]
+#[pyo3(signature = (ws, r=BLOCK_LENGTH, d=BLOCK_WEIGHT, t=ERROR_WEIGHT))]
+fn exact_threshold(ws: usize, r: usize, d: usize, t: usize) -> PyResult<u8> {
+    bike_decoder::threshold::exact_threshold_ineq(ws, r, d, t, None)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Computes the maximum overlap of the vector with support `supp` with each of the near-codeword
+/// sets C, N, and 2N associated to the key `(h0, h1)`.
+#[pyfunction]
+fn ncw_overlaps(
+    h0: Vec<u32>,
+    h1: Vec<u32>,
+    supp: Vec<u32>,
+) -> PyResult<HashMap<&'static str, usize>> {
+    let key = key_from_vec_supp(h0, h1)?;
+    let overlaps = NcwOverlaps::new(&key, &supp);
+    Ok(HashMap::from([
+        ("C", overlaps.c),
+        ("N", overlaps.n),
+        ("2N", overlaps.two_n),
+    ]))
+}
+
+/// Determines whether `supp` is an absorbing set for the key `(h0, h1)`.
+#[pyfunction]
+fn is_absorbing(h0: Vec<u32>, h1: Vec<u32>, supp: Vec<u32>) -> PyResult<bool> {
+    let key = key_from_vec_supp(h0, h1)?;
+    Ok(bike_decoder::graphs::is_absorbing(&key, &supp))
 }
 
 fn key_from_vec_supp(h0: Vec<u32>, h1: Vec<u32>) -> PyResult<Key> {
