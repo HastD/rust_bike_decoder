@@ -31,7 +31,7 @@ pub fn group_decoder(c: &mut Criterion) {
         let mut rng = custom_thread_rng();
         b.iter_batched_ref(
             || {
-                let key = Key::random(&mut rng);
+                let key = Key::random_non_weak(3, &mut rng);
                 let e_supp = SparseErrorVector::random(&mut rng);
                 let syn = Syndrome::from_sparse(&key, &e_supp);
                 (key, syn)
@@ -40,7 +40,7 @@ pub fn group_decoder(c: &mut Criterion) {
                 black_box(step_by_step_bitflip(
                     key,
                     syn,
-                    1000,
+                    10_000,
                     &mut custom_thread_rng(),
                 ))
             },

@@ -185,15 +185,13 @@ where
     let h_supp = [key.h0().support(), key.h1().support()];
     let mut e_out = ErrorVector::zero();
     let mut ws = s.hamming_weight();
-    s.duplicate_contents();
     for step in 0..max_steps {
         let k = rng.gen_range(0..2);
         let j = rng.gen_range(0..BLOCK_LENGTH);
         let upc = h_supp[k]
             .iter()
-            // If i + j >= BLOCK_LENGTH, this wraps around because we duplicated s
-            .map(|i| u8::from(s.get(*i as usize + j)))
-            .sum::<u8>();
+            .filter(|i| s.get((**i as usize + j) % BLOCK_LENGTH))
+            .count() as u8;
         if upc >= THRESHOLD_CACHE[ws] {
             e_out.flip(j + k * BLOCK_LENGTH);
             s.recompute_flipped_bit(key, k, j);
@@ -201,7 +199,6 @@ where
             if ws == 0 {
                 return (e_out, step + 1);
             }
-            s.duplicate_contents();
         }
     }
     (e_out, max_steps)
