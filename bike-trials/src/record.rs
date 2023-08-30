@@ -89,7 +89,7 @@ impl DataRecord {
 
 impl fmt::Display for DataRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", serde_json::to_string(self).or(Err(fmt::Error))?)
+        f.write_str(&serde_json::to_string(self).or(Err(fmt::Error))?)
     }
 }
 

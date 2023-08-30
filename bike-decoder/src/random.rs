@@ -4,7 +4,7 @@
 // suitable for applications where reproducibility of the results is desired.
 
 use hex::{FromHex, ToHex};
-use once_cell::sync::OnceCell;
+use once_cell::sync::OnceCell as OnceLock;
 use rand::{rngs::OsRng, RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use std::{
 };
 use thiserror::Error;
 
-static GLOBAL_SEED: OnceCell<Seed> = OnceCell::new();
+static GLOBAL_SEED: OnceLock<Seed> = OnceLock::new();
 static GLOBAL_THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
 
 thread_local! {
@@ -165,7 +165,7 @@ impl ToHex for Seed {
 
 impl fmt::Display for Seed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.encode_hex::<String>())
+        f.write_str(&self.encode_hex::<String>())
     }
 }
 
