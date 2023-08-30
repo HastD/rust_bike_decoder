@@ -1,5 +1,5 @@
 use bike_decoder::{
-    decoder::{bgf_decoder, unsatisfied_parity_checks},
+    decoder::{bgf_decoder, step_by_step_bitflip, unsatisfied_parity_checks},
     graphs::{self, TannerGraphEdges},
     keys::Key,
     ncw::{ClassifiedVector, NearCodewordClass, TaggedErrorVector},
@@ -24,6 +24,26 @@ pub fn group_decoder(c: &mut Criterion) {
                 (key, syn)
             },
             |(key, syn)| black_box(bgf_decoder(key, syn)),
+            BatchSize::SmallInput,
+        )
+    });
+    c.bench_function("step_by_step_bitflip", |b| {
+        let mut rng = custom_thread_rng();
+        b.iter_batched_ref(
+            || {
+                let key = Key::random(&mut rng);
+                let e_supp = SparseErrorVector::random(&mut rng);
+                let syn = Syndrome::from_sparse(&key, &e_supp);
+                (key, syn)
+            },
+            |(key, syn)| {
+                black_box(step_by_step_bitflip(
+                    key,
+                    syn,
+                    1000,
+                    &mut custom_thread_rng(),
+                ))
+            },
             BatchSize::SmallInput,
         )
     });

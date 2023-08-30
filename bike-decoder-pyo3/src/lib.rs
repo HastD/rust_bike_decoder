@@ -22,6 +22,7 @@ fn bike_decoder_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add("ROW_WEIGHT", ROW_WEIGHT)?;
     // Functions providing a Python interface to the BGF decoder and related utilities
     m.add_function(wrap_pyfunction!(bgf_decoder, m)?)?;
+    m.add_function(wrap_pyfunction!(step_by_step_bitflip, m)?)?;
     m.add_function(wrap_pyfunction!(random_key, m)?)?;
     m.add_function(wrap_pyfunction!(random_non_weak_key, m)?)?;
     m.add_function(wrap_pyfunction!(random_error_support, m)?)?;
@@ -44,6 +45,23 @@ fn bgf_decoder(h0: Vec<u32>, h1: Vec<u32>, s: Vec<bool>) -> PyResult<(Vec<bool>,
     let mut s = syndrome_from_vec(s)?;
     let (e_out, success) = decoder::bgf_decoder(&key, &mut s);
     Ok((e_out.contents().to_vec(), success))
+}
+
+/// Runs step-by-step decoder (Algorithm 7.1 in Vasseur's thesis) on key `(h0, h1)` and syndrome
+/// `s` for up to `max_steps` iterations. Returns the resulting error vector, the number of
+/// iterations actually carried out, and the weight of the resulting syndrome.
+#[pyfunction]
+fn step_by_step_bitflip(
+    h0: Vec<u32>,
+    h1: Vec<u32>,
+    s: Vec<bool>,
+    max_steps: usize,
+) -> PyResult<(Vec<bool>, usize, usize)> {
+    let mut rng = bike_decoder::random::custom_thread_rng();
+    let key = key_from_vec_supp(h0, h1)?;
+    let mut s = syndrome_from_vec(s)?;
+    let (e_out, steps) = decoder::step_by_step_bitflip(&key, &mut s, max_steps, &mut rng);
+    Ok((e_out.contents().to_vec(), steps, s.hamming_weight()))
 }
 
 /// Generates a random key
@@ -78,7 +96,10 @@ fn random_error_support() -> Vec<u32> {
 fn syndrome(h0: Vec<u32>, h1: Vec<u32>, e_supp: Vec<u32>) -> PyResult<Vec<bool>> {
     let key = key_from_vec_supp(h0, h1)?;
     let Ok(err) = ErrorVector::try_from(&*e_supp) else {
-        return Err(PyValueError::new_err(format!("indices must be <= {}", 2 * BLOCK_LENGTH)))
+        return Err(PyValueError::new_err(format!(
+            "indices must be <= {}",
+            2 * BLOCK_LENGTH
+        )));
     };
     Ok(Syndrome::from_dense(&key, &err).contents().to_vec())
 }
@@ -194,10 +215,14 @@ fn is_absorbing(h0: Vec<u32>, h1: Vec<u32>, supp: Vec<u32>) -> PyResult<bool> {
 
 fn key_from_vec_supp(h0: Vec<u32>, h1: Vec<u32>) -> PyResult<Key> {
     let Ok(h0) = <[u32; BLOCK_WEIGHT]>::try_from(h0) else {
-        return Err(PyValueError::new_err(format!("h0 must have length {BLOCK_WEIGHT}")))
+        return Err(PyValueError::new_err(format!(
+            "h0 must have length {BLOCK_WEIGHT}"
+        )));
     };
     let Ok(h1) = <[u32; BLOCK_WEIGHT]>::try_from(h1) else {
-        return Err(PyValueError::new_err(format!("h1 must have length {BLOCK_WEIGHT}")))
+        return Err(PyValueError::new_err(format!(
+            "h1 must have length {BLOCK_WEIGHT}"
+        )));
     };
     Key::from_support(h0, h1).map_err(|e| {
         let msg = format!("(h0, h1) was not a valid key: {e}");

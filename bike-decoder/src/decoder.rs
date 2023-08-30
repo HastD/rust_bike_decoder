@@ -8,6 +8,7 @@ use crate::{
 };
 use getset::{CopyGetters, Getters};
 use once_cell::sync::Lazy;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -167,6 +168,43 @@ pub fn bgf_decoder(key: &Key, s: &mut Syndrome) -> (ErrorVector, bool) {
         }
     }
     (e_out, ws == 0)
+}
+
+/// Runs step-by-step decoder (Algorithm 7.1 in Vasseur's thesis) on key `(h0, h1)` and syndrome
+/// `s` for up to `max_steps` iterations. Returns the resulting error vector and the number of
+/// iterations actually carried out.
+pub fn step_by_step_bitflip<R>(
+    key: &Key,
+    s: &mut Syndrome,
+    max_steps: usize,
+    rng: &mut R,
+) -> (ErrorVector, usize)
+where
+    R: Rng + ?Sized,
+{
+    let h_supp = [key.h0().support(), key.h1().support()];
+    let mut e_out = ErrorVector::zero();
+    let mut ws = s.hamming_weight();
+    s.duplicate_contents();
+    for step in 0..max_steps {
+        let k = rng.gen_range(0..2);
+        let j = rng.gen_range(0..BLOCK_LENGTH);
+        let upc = h_supp[k]
+            .iter()
+            // If i + j >= BLOCK_LENGTH, this wraps around because we duplicated s
+            .map(|i| u8::from(s.get(*i as usize + j)))
+            .sum::<u8>();
+        if upc >= THRESHOLD_CACHE[ws] {
+            e_out.flip(j + k * BLOCK_LENGTH);
+            s.recompute_flipped_bit(key, k, j);
+            ws = s.hamming_weight();
+            if ws == 0 {
+                return (e_out, step + 1);
+            }
+            s.duplicate_contents();
+        }
+    }
+    (e_out, max_steps)
 }
 
 pub fn find_bgf_cycle(key: &Key, e_in: &SparseErrorVector, max_iters: usize) -> DecoderCycle {

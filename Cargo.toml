@@ -1,5 +1,6 @@
 [workspace]
 members = ["bike-analysis", "bike-decoder", "bike-decoder-pyo3", "bike-trials"]
+resolver = "2"
 
 [profile.dev]
 opt-level = 1
